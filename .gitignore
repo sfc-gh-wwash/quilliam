@@ -1,0 +1,26 @@
+# Dependencies
+frontend/node_modules/
+backend/venv/
+
+# Build artifacts
+frontend/build/
+backend/__pycache__/
+
+# Secrets & keys
+.env
+backend/rsa_key.p8
+backend/rsa_key.pub
+
+# Audio temp files
+backend/temp_audio/
+
+# Logs
+logs/
+
+# OS files
+.DS_Store
+*.pid
+
+# IDE
+.vscode/
+.idea/

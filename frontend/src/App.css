@@ -1,0 +1,133 @@
+.App {
+  min-height: 100vh;
+  background: #f8fafc;
+}
+
+.app-hero {
+  background: linear-gradient(135deg, #29b5e8 0%, #1a8bc7 40%, #0d3b66 100%);
+  color: white;
+  padding: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.app-hero::before {
+  content: '';
+  position: absolute;
+  top: -50%; left: -50%;
+  width: 200%; height: 200%;
+  background: radial-gradient(circle at 30% 50%, rgba(255,255,255,0.08) 0%, transparent 50%);
+  pointer-events: none;
+}
+
+.hero-content {
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 32px 24px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 32px;
+  position: relative;
+}
+
+.hero-title h1 {
+  font-size: 1.9rem;
+  font-weight: 700;
+  margin: 0 0 6px 0;
+  line-height: 1.2;
+}
+
+.hero-title h1 span {
+  color: #a5f3fc;
+}
+
+.hero-title p {
+  font-size: 0.95rem;
+  opacity: 0.85;
+  margin: 0;
+}
+
+.hero-right {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-shrink: 0;
+}
+
+.status-strip {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.status-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-dot.ok { background: #4caf50; }
+.status-dot.error { background: #f44336; }
+.status-dot.loading { background: #ff9800; }
+
+.hero-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.action-button {
+  background: rgba(255, 255, 255, 0.15);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.action-button:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
+}
+
+.app-main {
+  flex: 1;
+  min-width: 0;
+  padding: 24px 32px;
+  overflow-y: auto;
+  height: calc(100vh - 80px);
+}
+
+.app-layout {
+  display: flex;
+}
+
+@media (max-width: 900px) {
+  .hero-content {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 24px 16px 20px;
+  }
+  .hero-title h1 { font-size: 1.5rem; }
+  .hero-right { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .app-layout { flex-direction: column; }
+  .app-main { padding: 20px 16px; height: auto; }
+}

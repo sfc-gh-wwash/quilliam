@@ -1,0 +1,125 @@
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: white;
+  border-right: 1px solid #e2e8f0;
+  height: calc(100vh - 80px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #e2e8f0;
+  position: sticky;
+  top: 0;
+  background: white;
+  z-index: 1;
+}
+
+.sidebar-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: #0d3b66;
+  font-weight: 700;
+}
+
+.new-meeting-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: #29b5e8;
+  color: white;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.new-meeting-btn:hover { background: #1a8bc7; }
+
+.meeting-list {
+  flex: 1;
+  padding: 8px;
+}
+
+.meeting-item {
+  padding: 14px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  margin-bottom: 4px;
+  transition: background 0.15s, border-color 0.15s;
+  border-left: 3px solid transparent;
+}
+
+.meeting-item:hover { background: #f8fafc; }
+
+.meeting-item.active {
+  background: #f0f9ff;
+  border-left-color: #29b5e8;
+}
+
+.meeting-item.recording .meeting-item-title::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #f44336;
+  margin-right: 8px;
+  animation: pulse 1.5s infinite;
+}
+
+.meeting-item-title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #1e293b;
+  margin-bottom: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.meeting-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.meeting-date {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.meeting-status-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 999px;
+  letter-spacing: 0.3px;
+}
+
+.meeting-status-badge.completed { background: #dcfce7; color: #166534; }
+.meeting-status-badge.in_progress { background: #fee2e2; color: #991b1b; }
+
+.sidebar-loading,
+.sidebar-empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: #94a3b8;
+  font-size: 0.88rem;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.7; transform: scale(1.15); }
+}
+
+@media (max-width: 768px) {
+  .sidebar { width: 100%; min-width: 100%; height: auto; max-height: 200px; border-right: none; border-bottom: 1px solid #e2e8f0; }
+}
