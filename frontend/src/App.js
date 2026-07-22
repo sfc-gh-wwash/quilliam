@@ -3,6 +3,7 @@ import './App.css';
 import AudioRecorder from './AudioRecorder';
 import Sidebar from './Sidebar';
 import MeetingDetail from './MeetingDetail';
+import AgentChat from './AgentChat';
 
 function App() {
   const [backendStatus, setBackendStatus] = useState(null);
@@ -10,6 +11,7 @@ function App() {
   const [websocket, setWebsocket] = useState(null);
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     checkBackendHealth();
@@ -72,6 +74,9 @@ function App() {
                 WebSocket
               </div>
             </div>
+            <button className="chat-toggle-btn" onClick={() => setChatOpen(!chatOpen)}>
+              {chatOpen ? 'Close Chat' : 'Ask Quilliam'}
+            </button>
           </div>
         </div>
       </header>
@@ -91,6 +96,12 @@ function App() {
           )}
         </main>
       </div>
+
+      <AgentChat
+        isOpen={chatOpen}
+        onClose={() => setChatOpen(false)}
+        meetingId={selectedMeetingId}
+      />
     </div>
   );
 }

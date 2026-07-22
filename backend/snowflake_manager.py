@@ -1,6 +1,7 @@
 import os
 import asyncio
 import time
+import requests
 from typing import Optional, Dict, Any, List
 import snowflake.connector
 from dotenv import load_dotenv
@@ -648,3 +649,64 @@ class SnowflakeManager:
         except Exception as e:
             print(f"delete_decision failed for {decision_id}: {str(e)}")
             return False
+
+    # ------------------------------------------------------------------
+    # Agent chat via REST API
+    # ------------------------------------------------------------------
+
+    async def run_agent(self, message: str, meeting_id: str = None) -> str:
+        """Call the Quilliam agent via the Snowflake REST API (non-streaming)."""
+        try:
+            # Build the message with optional meeting context
+            user_text = message
+            if meeting_id:
+                user_text = f"[Context: The user is asking about meeting {meeting_id}. Focus your search and queries on this specific meeting.]\n\n{message}"
+
+            # Get auth token from the active connection
+            token = self.connection.rest.token
+            account = self.config['account']
+
+            # Build Snowflake REST URL
+            # Account format: ORG-ACCOUNT -> org-account.snowflakecomputing.com
+            host = account.replace('_', '-').lower() + '.snowflakecomputing.com'
+            url = f"https://{host}/api/v2/databases/QUILLIAM/schemas/STG/agents/QUILLIAM_AGENT:run"
+
+            headers = {
+                'Authorization': f'Snowflake Token="{token}"',
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+            }
+
+            payload = {
+                "stream": False,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [{"type": "text", "text": user_text}]
+                    }
+                ]
+            }
+
+            loop = asyncio.get_event_loop()
+            response = await loop.run_in_executor(
+                None,
+                lambda: requests.post(url, json=payload, headers=headers, timeout=120)
+            )
+
+            if response.status_code != 200:
+                print(f"Agent API error {response.status_code}: {response.text[:500]}")
+                return f"Error: Agent returned status {response.status_code}"
+
+            data = response.json()
+
+            # Extract text content from the response
+            text_parts = []
+            for item in data.get('content', []):
+                if item.get('type') == 'text':
+                    text_parts.append(item.get('text', ''))
+
+            return '\n'.join(text_parts) if text_parts else "The agent did not return a text response."
+
+        except Exception as e:
+            print(f"run_agent failed: {str(e)}")
+            return f"Error: {str(e)}"

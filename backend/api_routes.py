@@ -45,6 +45,11 @@ class DecisionRequest(BaseModel):
     text: str
 
 
+class AgentChatRequest(BaseModel):
+    message: str
+    meeting_id: Optional[str] = None
+
+
 # ------------------------------------------------------------------
 # Audio devices
 # ------------------------------------------------------------------
@@ -272,3 +277,18 @@ async def delete_decision(decision_id: int):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to delete decision: {str(e)}")
+
+
+# ------------------------------------------------------------------
+# Agent Chat
+# ------------------------------------------------------------------
+
+@router.post("/agent/chat")
+async def agent_chat(request: AgentChatRequest):
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        response_text = await snowflake_manager.run_agent(request.message, request.meeting_id)
+        return {"response": response_text}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Agent chat failed: {str(e)}")

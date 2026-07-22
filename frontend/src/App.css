@@ -61,8 +61,26 @@
 .hero-right {
   display: flex;
   align-items: center;
-  gap: 24px;
+  gap: 16px;
   flex-shrink: 0;
+}
+
+.chat-toggle-btn {
+  padding: 8px 18px;
+  border: 1px solid rgba(255,255,255,0.4);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.12);
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.chat-toggle-btn:hover {
+  background: rgba(255,255,255,0.25);
+  transform: translateY(-1px);
 }
 
 .status-strip {
