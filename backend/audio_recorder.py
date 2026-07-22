@@ -130,8 +130,8 @@ class AudioRecorder:
             self.is_recording = False
             return {"error": str(e)}
 
-    def stop_recording(self):
-        """Stop all recording streams and upload archive synchronously."""
+    async def stop_recording(self):
+        """Stop all recording streams and upload archive."""
         if not self.is_recording:
             return
 
@@ -142,17 +142,9 @@ class AudioRecorder:
             thread.join(timeout=5)
         self.recording_threads.clear()
 
-        # Upload archive synchronously so it's on stage before close_meeting runs
+        # Upload archive before close_meeting runs
         if self.archive_filename and os.path.exists(self.archive_filename):
-            try:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                try:
-                    loop.run_until_complete(self._upload_archive())
-                finally:
-                    loop.close()
-            except Exception as e:
-                print(f"Error uploading archive: {e}")
+            await self._upload_archive()
 
         print("Recording stopped")
 
@@ -262,13 +254,13 @@ class AudioRecorder:
 
             success = await self.snowflake_manager.process_audio_transcription(staged_path)
             if success:
-                print(f"Transcription + extraction completed for {upload_type}")
+                print(f"Transcription completed for {upload_type}")
 
                 if self.current_meeting_id and self.update_callback:
-                    extractions = await self.snowflake_manager.get_meeting_extractions(
+                    transcript_chunks = await self.snowflake_manager.get_meeting_transcript(
                         self.current_meeting_id
                     )
-                    transcript_chunks = await self.snowflake_manager.get_meeting_transcript(
+                    questions = await self.snowflake_manager.detect_questions(
                         self.current_meeting_id
                     )
 
@@ -276,13 +268,7 @@ class AudioRecorder:
                         "type": "meeting_updated",
                         "meeting_id": self.current_meeting_id,
                         "transcript_chunks": [c['text'] for c in transcript_chunks if c['text']],
-                        "action_items": extractions.get('action_items', []),
-                        "decisions": extractions.get('decisions', []),
-                        "topics": extractions.get('topics', []),
-                        "attendees": extractions.get('attendees', []),
-                        "blockers": extractions.get('blockers', []),
-                        "follow_ups": extractions.get('follow_ups', []),
-                        "meeting_title": extractions.get('meeting_title', ''),
+                        "questions": questions,
                         "timestamp": datetime.now().isoformat()
                     })
 
@@ -321,7 +307,10 @@ class AudioRecorder:
 
     def cleanup(self):
         """Clean up resources."""
-        self.stop_recording()
+        self.is_recording = False
+        for thread in self.recording_threads:
+            thread.join(timeout=3)
+        self.recording_threads.clear()
         if self.pyaudio_instance:
             self.pyaudio_instance.terminate()
         try:

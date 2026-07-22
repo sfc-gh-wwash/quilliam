@@ -98,7 +98,7 @@ async def stop_meeting():
         raise HTTPException(status_code=500, detail="Services not initialized")
     try:
         meeting_id = audio_recorder.current_meeting_id
-        audio_recorder.stop_recording()
+        await audio_recorder.stop_recording()
 
         if meeting_id:
             await snowflake_manager.close_meeting(meeting_id)

@@ -141,7 +141,7 @@ class SnowflakeManager:
             parts = file_basename.split('_')
             if len(parts) >= 2:
                 meeting_id = parts[0]
-                await self.extract_meeting_notes(meeting_id)
+                await self.detect_questions(meeting_id)
 
             return True
         except Exception as e:
@@ -149,7 +149,50 @@ class SnowflakeManager:
             return False
 
     # ------------------------------------------------------------------
-    # Extraction: run ai_extract() on full meeting transcript so far
+    # Real-time question detection (last 3 chunks)
+    # ------------------------------------------------------------------
+
+    async def detect_questions(self, meeting_id: str) -> list:
+        """Detect questions from the last 3 transcript chunks using ai_extract."""
+        try:
+            detection_sql = f"""
+            WITH recent AS (
+                SELECT LISTAGG(TRANSCRIPT_TEXT, ' ') WITHIN GROUP (ORDER BY CHUNK_NUMBER) AS text_block
+                FROM (
+                    SELECT TRANSCRIPT_TEXT, CHUNK_NUMBER
+                    FROM QUILLIAM.STG.MEETING_TRANSCRIPTS
+                    WHERE MEETING_ID = '{meeting_id}'
+                      AND CHUNK_NUMBER > 0
+                      AND LENGTH(TRIM(TRANSCRIPT_TEXT)) > 3
+                    ORDER BY CHUNK_NUMBER DESC
+                    LIMIT 3
+                )
+            )
+            SELECT ai_extract(
+                text => text_block,
+                responseformat => PARSE_JSON('{{"questions": "List any questions that were asked in this conversation. Return an empty list if no questions were asked."}}')
+            ) AS result
+            FROM recent
+            WHERE text_block IS NOT NULL AND LENGTH(text_block) > 10
+            """
+
+            results = await self.execute_query(detection_sql)
+            if results and results[0][0]:
+                import json
+                parsed = json.loads(results[0][0]) if isinstance(results[0][0], str) else results[0][0]
+                response = parsed.get('response', {})
+                questions = response.get('questions', [])
+                if isinstance(questions, str):
+                    questions = [questions] if questions and questions != 'None' else []
+                questions = [q for q in questions if q and str(q) not in ('None', '')]
+                return questions
+            return []
+        except Exception as e:
+            print(f"Question detection failed for {meeting_id}: {str(e)}")
+            return []
+
+    # ------------------------------------------------------------------
+    # Extraction: run ai_extract() on full meeting transcript (at meeting end)
     # ------------------------------------------------------------------
 
     async def extract_meeting_notes(self, meeting_id: str) -> bool:
@@ -362,9 +405,10 @@ class SnowflakeManager:
             return []
 
     async def close_meeting(self, meeting_id: str) -> bool:
-        """Mark a meeting as completed, run speaker-level transcription, extract decisions, and generate summary."""
+        """Mark a meeting as completed, run full extraction, speaker transcription, and generate summary."""
         try:
             await self._transcribe_archive_with_speakers(meeting_id)
+            await self.extract_meeting_notes(meeting_id)
             await self._upsert_decisions(meeting_id)
             await self._generate_summary(meeting_id)
             await self.execute_query(f"""

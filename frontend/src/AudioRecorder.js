@@ -8,13 +8,10 @@ const AudioRecorder = ({ websocket, onMeetingEnded }) => {
   const [loading, setLoading] = useState(false);
 
   const [meetingId, setMeetingId] = useState('');
-  const [transcriptChunks, setTranscriptChunks] = useState([]);
-  const [actionItems, setActionItems] = useState([]);
-  const [decisions, setDecisions] = useState([]);
-  const [topics, setTopics] = useState([]);
-  const [attendees, setAttendees] = useState([]);
-  const [blockers, setBlockers] = useState([]);
   const [meetingTitle, setMeetingTitle] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [transcriptChunks, setTranscriptChunks] = useState([]);
+  const [questions, setQuestions] = useState([]);
 
   const [recorderCollapsed, setRecorderCollapsed] = useState(false);
 
@@ -61,34 +58,11 @@ const AudioRecorder = ({ websocket, onMeetingEnded }) => {
           setTranscriptChunks(msg.transcript_chunks);
         }
 
-        if (msg.action_items?.length) {
-          setActionItems(msg.action_items);
-        }
-
-        if (msg.decisions?.length) {
-          setDecisions(msg.decisions);
-        }
-
-        if (msg.topics?.length) {
-          setTopics(prev => {
+        if (msg.questions?.length) {
+          setQuestions(prev => {
             const existing = new Set(prev);
-            return [...prev, ...msg.topics.filter(t => !existing.has(t))];
+            return [...prev, ...msg.questions.filter(q => !existing.has(q))];
           });
-        }
-
-        if (msg.attendees?.length) {
-          setAttendees(prev => {
-            const existing = new Set(prev);
-            return [...prev, ...msg.attendees.filter(a => !existing.has(a))];
-          });
-        }
-
-        if (msg.blockers?.length) {
-          setBlockers(msg.blockers);
-        }
-
-        if (msg.meeting_title) {
-          setMeetingTitle(msg.meeting_title);
         }
 
       } catch (error) {
@@ -106,11 +80,7 @@ const AudioRecorder = ({ websocket, onMeetingEnded }) => {
     try {
       // Reset all state for new meeting
       setTranscriptChunks([]);
-      setActionItems([]);
-      setDecisions([]);
-      setTopics([]);
-      setAttendees([]);
-      setBlockers([]);
+      setQuestions([]);
       setMeetingTitle('');
 
       const response = await fetch('http://localhost:8080/api/meetings/start', {
@@ -211,7 +181,33 @@ const AudioRecorder = ({ websocket, onMeetingEnded }) => {
               <div className="session-info">
                 <div className="info-grid">
                   <div className="info-item"><strong>Meeting ID:</strong> {meetingId}</div>
-                  {meetingTitle && <div className="info-item"><strong>Title:</strong> {meetingTitle}</div>}
+                  <div className="info-item">
+                    <strong>Title:</strong>
+                    {editingTitle ? (
+                      <input
+                        className="inline-title-input"
+                        value={meetingTitle}
+                        onChange={(e) => setMeetingTitle(e.target.value)}
+                        onBlur={() => {
+                          setEditingTitle(false);
+                          if (meetingTitle.trim()) {
+                            fetch(`http://localhost:8080/api/meetings/${meetingId}`, {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ title: meetingTitle })
+                            });
+                          }
+                        }}
+                        onKeyDown={(e) => e.key === 'Enter' && e.target.blur()}
+                        autoFocus
+                        placeholder="Enter meeting title..."
+                      />
+                    ) : (
+                      <span className="editable-title" onClick={() => setEditingTitle(true)}>
+                        {meetingTitle || 'Click to add title'}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}
@@ -246,72 +242,13 @@ const AudioRecorder = ({ websocket, onMeetingEnded }) => {
         </div>
       )}
 
-      {/* Action Items */}
-      {actionItems.length > 0 && (
-        <div className="action-items-section">
-          <h2>Action Items <span className="count-badge">{actionItems.length}</span></h2>
-          <div className="action-items-table">
-            <div className="action-table-header">
-              <div className="col-owner">Owner</div>
-              <div className="col-task">Task</div>
-              <div className="col-due">Due Date</div>
-            </div>
-            {actionItems.map((item) => (
-              <div key={item.id} className="action-table-row">
-                <div className="col-owner">{item.owner || '—'}</div>
-                <div className="col-task">{item.task}</div>
-                <div className="col-due">{item.due_date || '—'}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Decisions */}
-      {decisions.length > 0 && (
-        <div className="decisions-section">
-          <h2>Decisions <span className="count-badge">{decisions.length}</span></h2>
-          <ul className="decisions-list">
-            {decisions.map((d) => (
-              <li key={d.id} className="decision-item">{d.text}</li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {/* Topics & Attendees */}
-      {(topics.length > 0 || attendees.length > 0) && (
-        <div className="tags-section">
-          {attendees.length > 0 && (
-            <div className="tags-group">
-              <h3>Attendees</h3>
-              <div className="tag-list">
-                {attendees.map((a, i) => (
-                  <span key={i} className="tag attendee-tag">{a}</span>
-                ))}
-              </div>
-            </div>
-          )}
-          {topics.length > 0 && (
-            <div className="tags-group">
-              <h3>Topics</h3>
-              <div className="tag-list">
-                {topics.map((t, i) => (
-                  <span key={i} className="tag topic-tag">{t}</span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Blockers */}
-      {blockers.length > 0 && (
-        <div className="blockers-section">
-          <h2>Blockers / Risks <span className="count-badge alert-badge">{blockers.length}</span></h2>
-          <ul className="blockers-list">
-            {blockers.map((b, i) => (
-              <li key={i} className="blocker-item">{b}</li>
+      {/* Questions Detected */}
+      {questions.length > 0 && (
+        <div className="questions-section">
+          <h2>Questions Asked <span className="count-badge">{questions.length}</span></h2>
+          <ul className="questions-list">
+            {[...questions].reverse().map((q, i) => (
+              <li key={i} className="question-item">{q}</li>
             ))}
           </ul>
         </div>

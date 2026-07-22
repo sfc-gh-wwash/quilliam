@@ -46,7 +46,7 @@ async def shutdown_event():
     global snowflake_manager, audio_recorder
 
     if audio_recorder:
-        audio_recorder.stop_recording()
+        await audio_recorder.stop_recording()
     if snowflake_manager:
         await snowflake_manager.disconnect()
 

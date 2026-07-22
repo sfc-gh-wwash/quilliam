@@ -235,6 +235,26 @@
 
 .info-item strong { color: #1e293b; font-weight: 600; }
 
+.inline-title-input {
+  padding: 4px 8px;
+  border: 1.5px solid #29b5e8;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  outline: none;
+  flex: 1;
+  min-width: 150px;
+}
+
+.editable-title {
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #475569;
+  transition: background 0.15s;
+}
+
+.editable-title:hover { background: #f1f5f9; }
+
 /* ── Count / Alert Badges ─────────────────────────────────────── */
 .count-badge {
   background: #29b5e8;
@@ -402,6 +422,44 @@
   background: #fff7ed;
   border-radius: 8px;
   border-left: 3px solid #f97316;
+  color: #1e293b;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+/* ── Questions Detected ────────────────────────────────────────── */
+.questions-section {
+  background: white;
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  border-top: 4px solid #8b5cf6;
+}
+
+.questions-section h2 {
+  margin: 0 0 16px 0;
+  color: #0d3b66;
+  font-size: 1.25rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.questions-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.question-item {
+  padding: 10px 14px;
+  background: #f5f3ff;
+  border-radius: 8px;
+  border-left: 3px solid #8b5cf6;
   color: #1e293b;
   font-size: 0.92rem;
   line-height: 1.5;
