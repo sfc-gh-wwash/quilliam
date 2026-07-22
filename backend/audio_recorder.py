@@ -131,7 +131,7 @@ class AudioRecorder:
             return {"error": str(e)}
 
     def stop_recording(self):
-        """Stop all recording streams."""
+        """Stop all recording streams and upload archive synchronously."""
         if not self.is_recording:
             return
 
@@ -142,8 +142,17 @@ class AudioRecorder:
             thread.join(timeout=5)
         self.recording_threads.clear()
 
+        # Upload archive synchronously so it's on stage before close_meeting runs
         if self.archive_filename and os.path.exists(self.archive_filename):
-            asyncio.create_task(self._upload_archive())
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self._upload_archive())
+                finally:
+                    loop.close()
+            except Exception as e:
+                print(f"Error uploading archive: {e}")
 
         print("Recording stopped")
 
@@ -284,7 +293,7 @@ class AudioRecorder:
             print(f"Error uploading {upload_type} to Snowflake: {str(e)}")
 
     async def _upload_archive(self):
-        """Upload complete meeting archive to Snowflake."""
+        """Upload complete meeting archive to Snowflake (transcription happens at meeting close)."""
         try:
             if not self.archive_filename or not os.path.exists(self.archive_filename):
                 print("No archive file to upload")
@@ -292,10 +301,6 @@ class AudioRecorder:
 
             staged_path = await self.snowflake_manager.upload_mp3_to_stage(self.archive_filename)
             print(f"Uploaded archive to Snowflake: {staged_path}")
-
-            success = await self.snowflake_manager.process_audio_transcription(staged_path)
-            if success:
-                print("Full meeting archive transcription completed")
 
             if os.path.exists(self.archive_filename):
                 os.remove(self.archive_filename)

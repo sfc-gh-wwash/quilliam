@@ -362,9 +362,11 @@ class SnowflakeManager:
             return []
 
     async def close_meeting(self, meeting_id: str) -> bool:
-        """Mark a meeting as completed and extract final decisions."""
+        """Mark a meeting as completed, run speaker-level transcription, extract decisions, and generate summary."""
         try:
+            await self._transcribe_archive_with_speakers(meeting_id)
             await self._upsert_decisions(meeting_id)
+            await self._generate_summary(meeting_id)
             await self.execute_query(f"""
                 UPDATE QUILLIAM.STG.MEETINGS
                 SET STATUS = 'COMPLETED', ENDED_AT = CURRENT_TIMESTAMP()
@@ -374,6 +376,86 @@ class SnowflakeManager:
         except Exception as e:
             print(f"close_meeting failed for {meeting_id}: {str(e)}")
             return False
+
+    async def _transcribe_archive_with_speakers(self, meeting_id: str) -> None:
+        """Run speaker-level transcription on the archive file (chunk 0) using timestamp_granularity=speaker."""
+        try:
+            # Archive filename pattern: {meeting_id}_0_{date}_.mp3
+            # Segments are: {meeting_id}_{chunk:03d}_{date}_.mp3 (3-digit chunk numbers)
+            # Use RLIKE to match _0_ followed by a year (not _001_, _002_, etc.)
+            files = await self.execute_query(f"""
+                SELECT DISTINCT METADATA$FILENAME
+                FROM @QUILLIAM.STG.AUDIO
+                WHERE METADATA$FILENAME RLIKE '{meeting_id}_0_[0-9]{{4}}.*'
+                LIMIT 1
+            """)
+
+            if not files:
+                print(f"No archive file found on stage for meeting {meeting_id}")
+                return
+
+            archive_filename = files[0][0]
+
+            transcription_sql = f"""
+            INSERT INTO QUILLIAM.STG.MEETING_TRANSCRIPTS
+                (MEETING_ID, CHUNK_NUMBER, TRANSCRIPT_TEXT, AUDIO_DURATION, CREATED_AT)
+            WITH t AS (
+                SELECT AI_TRANSCRIBE(
+                    TO_FILE('@QUILLIAM.STG.AUDIO', '{archive_filename}'),
+                    {{'timestamp_granularity': 'speaker'}}
+                ) AS transcription
+            )
+            SELECT
+                '{meeting_id}'                           AS MEETING_ID,
+                0                                        AS CHUNK_NUMBER,
+                transcription:text::TEXT                 AS TRANSCRIPT_TEXT,
+                transcription:audio_duration::FLOAT      AS AUDIO_DURATION,
+                CURRENT_TIMESTAMP()                      AS CREATED_AT
+            FROM t
+            WHERE transcription:text::TEXT IS NOT NULL
+            """
+
+            await self.execute_query(transcription_sql)
+            print(f"Speaker-level archive transcription completed for meeting {meeting_id}")
+        except Exception as e:
+            print(f"Archive speaker transcription failed for {meeting_id}: {str(e)}")
+
+    async def _generate_summary(self, meeting_id: str) -> None:
+        """Use ai_complete() to generate a narrative meeting summary from the archive transcript (chunk 0)."""
+        try:
+            summary_sql = f"""
+            UPDATE QUILLIAM.STG.MEETINGS
+            SET SUMMARY = (
+                WITH transcript AS (
+                    SELECT TRANSCRIPT_TEXT AS full_text
+                    FROM QUILLIAM.STG.MEETING_TRANSCRIPTS
+                    WHERE MEETING_ID = '{meeting_id}'
+                      AND CHUNK_NUMBER = 0
+                      AND AUDIO_DURATION > 15
+                    ORDER BY CREATED_AT DESC
+                    LIMIT 1
+                )
+                SELECT SNOWFLAKE.CORTEX.COMPLETE(
+                    'llama3.1-70b',
+                    CONCAT(
+                        'You are a meeting assistant. Given the following meeting transcript, produce a structured summary with these sections:\\n',
+                        '1. **Overview** - 2-3 sentence description of what was discussed and how the meeting flowed\\n',
+                        '2. **Key Decisions** - bullet list of conclusions or agreements reached\\n',
+                        '3. **Action Items** - bullet list with owner and task\\n',
+                        '4. **Next Steps** - what needs to happen after this meeting\\n\\n',
+                        'Transcript:\\n',
+                        full_text
+                    )
+                )
+                FROM transcript
+                WHERE full_text IS NOT NULL AND LENGTH(full_text) > 20
+            )
+            WHERE MEETING_ID = '{meeting_id}'
+            """
+            await self.execute_query(summary_sql)
+            print(f"Summary generated for meeting {meeting_id}")
+        except Exception as e:
+            print(f"Summary generation failed for {meeting_id}: {str(e)}")
 
     async def create_meeting(self, meeting_id: str) -> bool:
         """Insert a new meeting row when recording starts."""
@@ -395,7 +477,7 @@ class SnowflakeManager:
         """Return all meetings ordered by most recent."""
         try:
             results = await self.execute_query("""
-                SELECT MEETING_ID, TITLE, STARTED_AT, ENDED_AT, STATUS, NOTES
+                SELECT MEETING_ID, TITLE, STARTED_AT, ENDED_AT, STATUS, NOTES, SUMMARY
                 FROM QUILLIAM.STG.MEETINGS
                 ORDER BY STARTED_AT DESC
             """)
@@ -407,6 +489,7 @@ class SnowflakeManager:
                     'ended_at': str(r[3]) if r[3] else None,
                     'status': r[4],
                     'notes': r[5],
+                    'summary': r[6],
                 }
                 for r in results
             ]

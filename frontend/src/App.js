@@ -50,7 +50,7 @@ function App() {
       <header className="app-hero">
         <div className="hero-content">
           <div className="hero-title">
-            <h1>Quilliam <span>Powered by Snowflake</span></h1>
+            <h1><img src="/icon.jpg" alt="Quilliam" className="app-logo" />Quilliam <span>Powered by Snowflake</span></h1>
             <p>Real-time transcription &bull; AI extraction &bull; Structured meeting notes</p>
           </div>
           <div className="hero-right">

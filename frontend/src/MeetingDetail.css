@@ -92,6 +92,21 @@
 
 .detail-section.blockers { border-top-color: #f44336; }
 
+/* Summary */
+.summary-section { border-top-color: #8b5cf6; }
+
+.summary-content {
+  color: #1e293b;
+  font-size: 0.92rem;
+  line-height: 1.7;
+}
+
+.summary-content p {
+  margin: 0 0 8px 0;
+}
+
+.summary-content p:empty { display: none; }
+
 .count-badge {
   background: #29b5e8;
   color: white;

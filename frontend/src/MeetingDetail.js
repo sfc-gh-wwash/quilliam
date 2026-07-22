@@ -7,6 +7,7 @@ const MeetingDetail = ({ meetingId }) => {
   const [loading, setLoading] = useState(true);
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
+  const [summary, setSummary] = useState('');
   const [transcriptChunks, setTranscriptChunks] = useState([]);
   const [actionItems, setActionItems] = useState([]);
   const [decisions, setDecisions] = useState([]);
@@ -52,6 +53,7 @@ const MeetingDetail = ({ meetingId }) => {
           setMeetingMeta(meeting);
           if (meeting.title) setTitle(meeting.title);
           if (meeting.notes) setNotes(meeting.notes);
+          if (meeting.summary) setSummary(meeting.summary);
         }
       }
     } catch (error) {
@@ -64,6 +66,7 @@ const MeetingDetail = ({ meetingId }) => {
   useEffect(() => {
     setTitle('');
     setNotes('');
+    setSummary('');
     loadMeeting();
   }, [meetingId, loadMeeting]);
 
@@ -168,6 +171,18 @@ const MeetingDetail = ({ meetingId }) => {
           </span>
         </div>
       </div>
+
+      {/* Summary */}
+      {summary && (
+        <section className="detail-section summary-section">
+          <h2>Meeting Summary</h2>
+          <div className="summary-content">
+            {summary.split('\n').map((line, i) => (
+              <p key={i}>{line}</p>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Transcript */}
       {transcriptChunks.length > 0 && (
