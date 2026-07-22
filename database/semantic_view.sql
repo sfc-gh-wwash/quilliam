@@ -10,43 +10,65 @@ USE SCHEMA QUILLIAM.STG;
 GRANT CREATE SEMANTIC VIEW ON SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL;
 
 CREATE OR REPLACE SEMANTIC VIEW QUILLIAM.STG.MEETING_ANALYTICS_SV
-  AS SEMANTIC MODEL
-  TABLES (
-    QUILLIAM.STG.MEETINGS AS meetings
-      PRIMARY KEY (MEETING_ID)
-      WITH COLUMNS (
-        MEETING_ID DESCRIPTION 'Unique meeting identifier',
-        TITLE DESCRIPTION 'Meeting title or name',
-        STARTED_AT DESCRIPTION 'When the meeting started',
-        ENDED_AT DESCRIPTION 'When the meeting ended',
-        STATUS DESCRIPTION 'Meeting status: IN_PROGRESS or COMPLETED',
-        NOTES DESCRIPTION 'Free-text notes added by the user',
-        SUMMARY DESCRIPTION 'AI-generated meeting summary with overview, decisions, action items, and next steps'
-      ),
-    QUILLIAM.STG.ACTION_ITEMS AS action_items
-      PRIMARY KEY (ID)
-      WITH COLUMNS (
-        ID DESCRIPTION 'Action item unique ID',
-        MEETING_ID DESCRIPTION 'Meeting this action item belongs to',
-        OWNER DESCRIPTION 'Person responsible for the action item',
-        TASK DESCRIPTION 'Description of the task or to-do',
-        DUE_DATE DESCRIPTION 'When the action item is due',
-        STATUS DESCRIPTION 'Action item status: OPEN or DONE',
-        CREATED_AT DESCRIPTION 'When this action item was extracted'
-      ),
-    QUILLIAM.STG.DECISIONS AS decisions
-      PRIMARY KEY (ID)
-      WITH COLUMNS (
-        ID DESCRIPTION 'Decision unique ID',
-        MEETING_ID DESCRIPTION 'Meeting this decision belongs to',
-        DECISION_TEXT DESCRIPTION 'The decision or agreement that was made',
-        CREATED_AT DESCRIPTION 'When this decision was extracted'
-      )
-  )
-  RELATIONSHIPS (
-    action_items.MEETING_ID REFERENCES meetings.MEETING_ID,
-    decisions.MEETING_ID REFERENCES meetings.MEETING_ID
-  );
 
-GRANT USAGE ON SEMANTIC VIEW QUILLIAM.STG.MEETING_ANALYTICS_SV TO ROLE QUILLIAM_ADMIN_RL;
-GRANT REFERENCES ON SEMANTIC VIEW QUILLIAM.STG.MEETING_ANALYTICS_SV TO ROLE QUILLIAM_ADMIN_RL;
+  TABLES (
+    meetings AS QUILLIAM.STG.MEETINGS
+      PRIMARY KEY (MEETING_ID)
+      COMMENT = 'One row per meeting recording session',
+    action_items AS QUILLIAM.STG.ACTION_ITEMS
+      PRIMARY KEY (ID)
+      COMMENT = 'Action items extracted from meetings',
+    decisions AS QUILLIAM.STG.DECISIONS
+      PRIMARY KEY (ID)
+      COMMENT = 'Decisions captured from meetings'
+  )
+
+  RELATIONSHIPS (
+    action_items_to_meetings AS
+      action_items (MEETING_ID) REFERENCES meetings (MEETING_ID),
+    decisions_to_meetings AS
+      decisions (MEETING_ID) REFERENCES meetings (MEETING_ID)
+  )
+
+  DIMENSIONS (
+    meetings.meeting_id_dim AS MEETING_ID
+      COMMENT = 'Unique meeting identifier',
+    meetings.title_dim AS TITLE
+      COMMENT = 'Meeting title or name',
+    meetings.started_at_dim AS STARTED_AT
+      COMMENT = 'When the meeting started',
+    meetings.ended_at_dim AS ENDED_AT
+      COMMENT = 'When the meeting ended',
+    meetings.status_dim AS STATUS
+      COMMENT = 'Meeting status: IN_PROGRESS or COMPLETED'
+      SAMPLE_VALUES ('IN_PROGRESS', 'COMPLETED')
+      IS_ENUM,
+    action_items.owner_dim AS OWNER
+      COMMENT = 'Person responsible for the action item',
+    action_items.task_dim AS TASK
+      COMMENT = 'Description of the task or to-do',
+    action_items.due_date_dim AS DUE_DATE
+      COMMENT = 'When the action item is due',
+    action_items.action_status_dim AS STATUS
+      COMMENT = 'Action item status: OPEN or DONE'
+      SAMPLE_VALUES ('OPEN', 'DONE')
+      IS_ENUM,
+    decisions.decision_text_dim AS DECISION_TEXT
+      COMMENT = 'The decision or agreement that was made'
+  )
+
+  METRICS (
+    meetings.meeting_count AS COUNT(MEETING_ID)
+      COMMENT = 'Total number of meetings',
+    action_items.action_item_count AS COUNT(ID)
+      COMMENT = 'Total number of action items',
+    action_items.open_action_items AS COUNT(CASE WHEN STATUS = 'OPEN' THEN 1 END)
+      COMMENT = 'Number of open action items',
+    decisions.decision_count AS COUNT(ID)
+      COMMENT = 'Total number of decisions'
+  )
+
+  COMMENT = 'Semantic view for meeting analytics - meetings, action items, and decisions';
+
+-- Grant access
+GRANT REFERENCES, SELECT ON SEMANTIC VIEW QUILLIAM.STG.MEETING_ANALYTICS_SV TO ROLE QUILLIAM_ADMIN_RL;
