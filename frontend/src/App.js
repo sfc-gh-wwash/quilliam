@@ -5,6 +5,26 @@ import Sidebar from './Sidebar';
 import MeetingDetail from './MeetingDetail';
 import AgentChat from './AgentChat';
 
+const RELEASE_NOTES = [
+  { version: '2.1', date: '2026-07-23', items: [
+    'Gmail, Google Calendar, and Slack MCP connectors (Connect Services in agent chat)',
+    'Cortex Search on meeting notes and summaries',
+    'Agent can now search across all meeting content',
+  ]},
+  { version: '2.0', date: '2026-07-23', items: [
+    'Converted all tables to standard (no more hybrid tables)',
+    'Data-preserving DDL — safe to re-run without data loss',
+    'Migration script (migrate_to_v2.sql) for existing deployments',
+    '31 pre-loaded meeting notes with summaries',
+  ]},
+  { version: '1.0', date: '2026-07-21', items: [
+    'Real-time audio transcription with ai_transcribe()',
+    'AI extraction of action items, decisions, and topics',
+    'Quilliam agent chat with transcript search + semantic view',
+    'Meeting sidebar with full detail editing',
+  ]},
+];
+
 function App() {
   const [backendStatus, setBackendStatus] = useState(null);
   const [websocketStatus, setWebsocketStatus] = useState('Disconnected');
@@ -12,6 +32,9 @@ function App() {
   const [selectedMeetingId, setSelectedMeetingId] = useState(null);
   const [sidebarRefreshKey, setSidebarRefreshKey] = useState(0);
   const [chatOpen, setChatOpen] = useState(false);
+  const [showReleaseNotes, setShowReleaseNotes] = useState(
+    !localStorage.getItem('quilliam_rn_dismissed')
+  );
 
   useEffect(() => {
     checkBackendHealth();
@@ -77,9 +100,37 @@ function App() {
             <button className="chat-toggle-btn" onClick={() => setChatOpen(!chatOpen)}>
               {chatOpen ? 'Close Chat' : 'Ask Quilliam'}
             </button>
+            {!showReleaseNotes && (
+              <button className="release-notes-toggle" onClick={() => setShowReleaseNotes(true)} title="What's New">
+                v{RELEASE_NOTES[0].version}
+              </button>
+            )}
           </div>
         </div>
       </header>
+
+      {showReleaseNotes && (
+        <div className="release-notes-banner">
+          <div className="release-notes-content">
+            <div className="release-notes-header">
+              <h3>What's New</h3>
+              <button className="release-notes-close" onClick={() => {
+                setShowReleaseNotes(false);
+                localStorage.setItem('quilliam_rn_dismissed', RELEASE_NOTES[0].version);
+              }}>&times;</button>
+            </div>
+            {RELEASE_NOTES.map(release => (
+              <div key={release.version} className="release-version">
+                <span className="release-tag">v{release.version}</span>
+                <span className="release-date">{release.date}</span>
+                <ul>
+                  {release.items.map((item, i) => <li key={i}>{item}</li>)}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="app-layout">
         <Sidebar

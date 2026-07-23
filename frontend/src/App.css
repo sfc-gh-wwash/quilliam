@@ -143,6 +143,90 @@
   height: calc(100vh - 80px);
 }
 
+/* Release Notes Banner */
+.release-notes-banner {
+  background: linear-gradient(135deg, #f0f9ff 0%, #e8f4fd 100%);
+  border-bottom: 1px solid #bae6fd;
+  padding: 12px 24px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.release-notes-content {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.release-notes-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.release-notes-header h3 {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #0369a1;
+}
+
+.release-notes-close {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  color: #64748b;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.release-notes-close:hover { background: rgba(0,0,0,0.05); }
+
+.release-notes-toggle {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: white;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-left: 8px;
+}
+
+.release-notes-toggle:hover { background: rgba(255,255,255,0.25); }
+
+.release-version {
+  margin-bottom: 8px;
+}
+
+.release-tag {
+  display: inline-block;
+  background: #29b5e8;
+  color: white;
+  padding: 1px 7px;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  margin-right: 6px;
+}
+
+.release-date {
+  font-size: 0.72rem;
+  color: #64748b;
+}
+
+.release-version ul {
+  margin: 4px 0 0 16px;
+  padding: 0;
+  font-size: 0.78rem;
+  color: #334155;
+}
+
+.release-version li {
+  margin-bottom: 2px;
+}
+
 .app-layout {
   display: flex;
 }
