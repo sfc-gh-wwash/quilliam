@@ -49,6 +49,7 @@ React Frontend (localhost:3000)
 
 - Python 3.11+
 - Node 18+
+- FFmpeg (`brew install ffmpeg` on macOS)
 - PortAudio (`brew install portaudio` on macOS)
 - Snowflake account with Cortex AI enabled
 
@@ -76,6 +77,7 @@ ALTER USER QUILLIAM_ADMIN SET RSA_PUBLIC_KEY='<contents of rsa_key.pub without h
 Copy `.env.example` or create `.env` in the project root:
 
 ```
+cat > .env << 'EOF'
 SNOWFLAKE_ACCOUNT=<your-account>
 SNOWFLAKE_USER=QUILLIAM_ADMIN
 SNOWFLAKE_PRIVATE_KEY_PATH=./rsa_key.p8
@@ -84,6 +86,7 @@ SNOWFLAKE_DATABASE=QUILLIAM
 SNOWFLAKE_SCHEMA=STG
 SNOWFLAKE_ROLE=QUILLIAM_ADMIN_RL
 PORT=8080
+EOF
 ```
 
 ### 4. Start the app
