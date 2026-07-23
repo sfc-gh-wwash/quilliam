@@ -13,8 +13,17 @@ LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKEND_LOG="$LOG_DIR/backend_$TIMESTAMP.log"
 FRONTEND_LOG="$LOG_DIR/frontend_$TIMESTAMP.log"
+APP_VERSION=$(cat "$PROJECT_DIR/VERSION" | tr -d '[:space:]')
 
-echo "Restarting Quilliam..."
+echo "Restarting Quilliam v${APP_VERSION}..."
+
+# ------------------------------------------------------------------
+# Version check — auto-deploy if Snowflake schema is outdated
+# ------------------------------------------------------------------
+if [ -d "$VENV_DIR" ]; then
+    echo "Checking Snowflake schema version..."
+    "$VENV_PYTHON" "$PROJECT_DIR/deploy_check.py" || true
+fi
 
 kill_process() {
     pkill -f "$1" 2>/dev/null || true

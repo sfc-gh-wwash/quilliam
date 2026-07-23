@@ -181,6 +181,15 @@ FROM QUILLIAM.STG._DECISIONS_BACKUP;
 
 DROP TABLE QUILLIAM.STG._DECISIONS_BACKUP;
 
+-- ====================================================
+-- APP_VERSION — tracks deployed schema version
+-- ====================================================
+CREATE TABLE IF NOT EXISTS QUILLIAM.STG.APP_VERSION (
+    VERSION             VARCHAR(20)     NOT NULL,
+    DEPLOYED_AT         TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
+    DEPLOYED_BY         VARCHAR(200)    DEFAULT CURRENT_USER()
+);
+
 -- ----------------------------------------------------
 -- Comments
 -- ----------------------------------------------------

@@ -13,6 +13,7 @@ LOG_DIR="$PROJECT_DIR/logs"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKEND_LOG="$LOG_DIR/backend_$TIMESTAMP.log"
 FRONTEND_LOG="$LOG_DIR/frontend_$TIMESTAMP.log"
+APP_VERSION=$(cat "$PROJECT_DIR/VERSION" | tr -d '[:space:]')
 
 if ! command -v ffmpeg &>/dev/null; then
     echo "ERROR: ffmpeg is required but not installed."
@@ -21,7 +22,26 @@ if ! command -v ffmpeg &>/dev/null; then
     exit 1
 fi
 
-echo "Starting Quilliam..."
+# ------------------------------------------------------------------
+# Version check — auto-deploy if Snowflake schema is outdated
+# ------------------------------------------------------------------
+check_and_deploy() {
+    echo "Checking Snowflake schema version..."
+    if [ -d "$VENV_DIR" ]; then
+        "$VENV_PYTHON" "$PROJECT_DIR/deploy_check.py" || true
+    else
+        # No venv yet, create it first for the check
+        "$PYTHON_BIN" -m venv "$VENV_DIR"
+        "$VENV_PIP" install -q --upgrade pip setuptools
+        "$VENV_PIP" install -q -r "$BACKEND_DIR/requirements.txt"
+        "$VENV_PYTHON" "$PROJECT_DIR/deploy_check.py" || true
+    fi
+}
+
+check_and_deploy
+
+echo ""
+echo "Starting Quilliam v${APP_VERSION}..."
 echo "$PROJECT_DIR"
 kill_process() {
     pkill -f "$1" 2>/dev/null || true
