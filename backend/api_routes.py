@@ -292,3 +292,47 @@ async def agent_chat(request: AgentChatRequest):
         return {"response": response_text}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Agent chat failed: {str(e)}")
+
+
+# ------------------------------------------------------------------
+# MCP OAuth Connectors
+# ------------------------------------------------------------------
+
+class McpConnectRequest(BaseModel):
+    integration: str = 'NOVA_MCP_INTEGRATION'
+
+class McpCallbackRequest(BaseModel):
+    query_string: str
+
+
+@router.get("/mcp/connectors")
+async def list_mcp_connectors():
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        connectors = await snowflake_manager.get_mcp_connectors()
+        return {"connectors": connectors}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list MCP connectors: {str(e)}")
+
+
+@router.post("/mcp/connect")
+async def start_mcp_connect(request: McpConnectRequest):
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        auth_url = await snowflake_manager.start_mcp_oauth(request.integration)
+        return {"auth_url": auth_url}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to start OAuth flow: {str(e)}")
+
+
+@router.post("/mcp/callback")
+async def finish_mcp_connect(request: McpCallbackRequest):
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        success = await snowflake_manager.finish_mcp_oauth(request.query_string)
+        return {"success": success}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to complete OAuth flow: {str(e)}")

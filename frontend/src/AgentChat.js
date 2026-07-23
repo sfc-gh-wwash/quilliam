@@ -3,15 +3,76 @@ import './AgentChat.css';
 
 const API = 'http://localhost:8080/api';
 
+const MCP_CONNECTORS = [
+  { key: 'GMAIL_MCP', label: 'Gmail', icon: '✉' },
+  { key: 'GOOGLE_CALENDAR_MCP', label: 'Calendar', icon: '📅' },
+  { key: 'SLACK_MCP', label: 'Slack', icon: '💬' },
+];
+
 const AgentChat = ({ isOpen, onClose, meetingId, meetingTitle }) => {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [connectors, setConnectors] = useState([]);
+  const [oauthConnecting, setOauthConnecting] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  useEffect(() => {
+    if (isOpen) loadConnectors();
+  }, [isOpen]);
+
+  const loadConnectors = async () => {
+    try {
+      const res = await fetch(`${API}/mcp/connectors`);
+      if (res.ok) {
+        const data = await res.json();
+        setConnectors(data.connectors || []);
+      }
+    } catch (err) {
+      console.error('Failed to load connectors:', err);
+    }
+  };
+
+  const connectServices = async () => {
+    setOauthConnecting(true);
+    try {
+      const res = await fetch(`${API}/mcp/connect`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ integration: 'NOVA_MCP_INTEGRATION' })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.auth_url) {
+          const popup = window.open(data.auth_url, 'mcp_oauth', 'width=600,height=700');
+          // Poll for popup close
+          const interval = setInterval(() => {
+            if (popup && popup.closed) {
+              clearInterval(interval);
+              setOauthConnecting(false);
+              loadConnectors();
+            }
+          }, 1000);
+          // Timeout after 5 minutes
+          setTimeout(() => {
+            clearInterval(interval);
+            setOauthConnecting(false);
+          }, 300000);
+        }
+      }
+    } catch (err) {
+      console.error('OAuth connect failed:', err);
+      setOauthConnecting(false);
+    }
+  };
+
+  const isConnected = (key) => {
+    return connectors.some(c => c.name === key && c.state === 'ENABLED');
+  };
 
   const sendMessage = async () => {
     if (!input.trim() || loading) return;
@@ -53,6 +114,24 @@ const AgentChat = ({ isOpen, onClose, meetingId, meetingTitle }) => {
           </span>
         </div>
         <button className="agent-chat-close" onClick={onClose}>&times;</button>
+      </div>
+
+      <div className="mcp-connectors-bar">
+        <div className="mcp-pills">
+          {MCP_CONNECTORS.map(c => (
+            <span key={c.key} className={`mcp-pill ${isConnected(c.key) ? 'connected' : ''}`}>
+              <span className="mcp-pill-icon">{c.icon}</span>
+              {c.label}
+            </span>
+          ))}
+        </div>
+        <button
+          className="mcp-connect-btn"
+          onClick={connectServices}
+          disabled={oauthConnecting}
+        >
+          {oauthConnecting ? 'Connecting...' : 'Connect Services'}
+        </button>
       </div>
 
       <div className="agent-chat-messages">

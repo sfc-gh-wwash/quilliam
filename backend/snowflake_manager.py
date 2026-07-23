@@ -710,3 +710,62 @@ class SnowflakeManager:
         except Exception as e:
             print(f"run_agent failed: {str(e)}")
             return f"Error: {str(e)}"
+
+    # ------------------------------------------------------------------
+    # MCP OAuth Flow
+    # ------------------------------------------------------------------
+
+    async def get_mcp_connectors(self) -> List[Dict[str, Any]]:
+        """Return available external MCP servers and their connection status."""
+        try:
+            results = await self.execute_query(
+                "SHOW EXTERNAL MCP SERVERS IN SCHEMA QUILLIAM.STG"
+            )
+            connectors = []
+            for r in results:
+                name = r[1]
+                # Get full details via DESCRIBE
+                try:
+                    desc = await self.execute_query(
+                        f"DESCRIBE EXTERNAL MCP SERVER QUILLIAM.STG.{name}"
+                    )
+                    if desc and desc[0]:
+                        d = desc[0]
+                        is_disabled = d[8] if len(d) > 8 else False
+                        connectors.append({
+                            'name': d[0],
+                            'display_name': d[5] if len(d) > 5 else name,
+                            'url': d[7] if len(d) > 7 else '',
+                            'state': 'DISABLED' if str(is_disabled).lower() == 'true' else 'ENABLED',
+                        })
+                except:
+                    connectors.append({'name': name, 'display_name': name, 'url': '', 'state': 'ENABLED'})
+            return connectors
+        except Exception as e:
+            print(f"get_mcp_connectors failed: {str(e)}")
+            return []
+
+    async def start_mcp_oauth(self, integration_name: str = 'NOVA_MCP_INTEGRATION') -> str:
+        """Start the OAuth flow for an MCP integration. Returns the authorization URL."""
+        try:
+            results = await self.execute_query(
+                f"SELECT SYSTEM$START_USER_OAUTH_FLOW('{integration_name}')"
+            )
+            if results and results[0]:
+                return results[0][0]
+            return ''
+        except Exception as e:
+            print(f"start_mcp_oauth failed: {str(e)}")
+            raise
+
+    async def finish_mcp_oauth(self, query_string: str) -> bool:
+        """Complete the OAuth flow with the callback query string."""
+        try:
+            safe_qs = query_string.replace("'", "''")
+            await self.execute_query(
+                f"SELECT SYSTEM$FINISH_OAUTH_FLOW('{safe_qs}')"
+            )
+            return True
+        except Exception as e:
+            print(f"finish_mcp_oauth failed: {str(e)}")
+            raise

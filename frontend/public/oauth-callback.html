@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Connecting...</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      margin: 0;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+    .card {
+      text-align: center;
+      padding: 40px;
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    }
+    .check { font-size: 48px; margin-bottom: 12px; }
+    h2 { margin: 0 0 8px; }
+    p { color: #64748b; margin: 0; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="check">✓</div>
+    <h2>Connected</h2>
+    <p>You can close this window.</p>
+  </div>
+  <script>
+    // If there's a query string from an OAuth callback, send it to the backend
+    const qs = window.location.search;
+    if (qs && qs.length > 1) {
+      fetch('http://localhost:8080/api/mcp/callback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query_string: qs.substring(1) })
+      }).then(() => {
+        // Auto-close after a short delay
+        setTimeout(() => window.close(), 1500);
+      }).catch(console.error);
+    } else {
+      // DCR flow completed server-side, just close
+      setTimeout(() => window.close(), 2000);
+    }
+  </script>
+</body>
+</html>

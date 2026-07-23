@@ -1,6 +1,6 @@
 -- ===============================================
--- Quilliam Cortex Search Service
--- Full meeting transcripts (chunk 0) searchable
+-- Quilliam Cortex Search Services
+-- Transcript, notes, and summary search
 -- ===============================================
 
 USE ROLE ACCOUNTADMIN;
@@ -9,7 +9,9 @@ USE SCHEMA QUILLIAM.STG;
 -- Grant required privileges
 GRANT CREATE CORTEX SEARCH SERVICE ON SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL;
 
--- Cortex Search Service on full transcripts
+-- -----------------------------------------------
+-- Transcript search
+-- -----------------------------------------------
 CREATE OR REPLACE CORTEX SEARCH SERVICE QUILLIAM.STG.MEETING_TRANSCRIPT_SEARCH
   ON TRANSCRIPT_TEXT
   ATTRIBUTES MEETING_ID
@@ -24,3 +26,37 @@ CREATE OR REPLACE CORTEX SEARCH SERVICE QUILLIAM.STG.MEETING_TRANSCRIPT_SEARCH
   );
 
 GRANT USAGE ON CORTEX SEARCH SERVICE QUILLIAM.STG.MEETING_TRANSCRIPT_SEARCH TO ROLE QUILLIAM_ADMIN_RL;
+
+-- -----------------------------------------------
+-- Notes search (full meeting markdown)
+-- -----------------------------------------------
+CREATE OR REPLACE CORTEX SEARCH SERVICE QUILLIAM.STG.MEETING_NOTES_SEARCH
+  ON NOTES
+  ATTRIBUTES MEETING_ID, TITLE
+  WAREHOUSE = QUILLIAM_WH
+  TARGET_LAG = '15 minute'
+  AS (
+    SELECT MEETING_ID, TITLE, NOTES
+    FROM QUILLIAM.STG.MEETINGS
+    WHERE NOTES IS NOT NULL
+      AND LENGTH(TRIM(NOTES)) > 10
+  );
+
+GRANT USAGE ON CORTEX SEARCH SERVICE QUILLIAM.STG.MEETING_NOTES_SEARCH TO ROLE QUILLIAM_ADMIN_RL;
+
+-- -----------------------------------------------
+-- Summary search (concise overviews)
+-- -----------------------------------------------
+CREATE OR REPLACE CORTEX SEARCH SERVICE QUILLIAM.STG.MEETING_SUMMARY_SEARCH
+  ON SUMMARY
+  ATTRIBUTES MEETING_ID, TITLE
+  WAREHOUSE = QUILLIAM_WH
+  TARGET_LAG = '15 minute'
+  AS (
+    SELECT MEETING_ID, TITLE, SUMMARY
+    FROM QUILLIAM.STG.MEETINGS
+    WHERE SUMMARY IS NOT NULL
+      AND LENGTH(TRIM(SUMMARY)) > 10
+  );
+
+GRANT USAGE ON CORTEX SEARCH SERVICE QUILLIAM.STG.MEETING_SUMMARY_SEARCH TO ROLE QUILLIAM_ADMIN_RL;

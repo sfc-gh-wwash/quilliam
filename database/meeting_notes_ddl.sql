@@ -1,10 +1,12 @@
 -- ===============================================
--- Meeting Notes Demo DDL
--- Snowflake setup, tables, stage, user/role/warehouse
+-- Meeting Notes Demo DDL (data-preserving)
+-- Clones existing tables before recreation, then restores data.
+-- All objects owned by QUILLIAM_ADMIN_RL.
+-- Safe to re-run on a fresh or existing database.
 -- ===============================================
 
 -- ----------------------------------------------------
--- Role, User, Warehouse
+-- Role, User, Warehouse (requires ACCOUNTADMIN)
 -- ----------------------------------------------------
 USE ROLE ACCOUNTADMIN;
 
@@ -20,7 +22,7 @@ CREATE WAREHOUSE IF NOT EXISTS QUILLIAM_WH
     AUTO_SUSPEND = 60
     AUTO_RESUME = TRUE;
 
-GRANT USAGE ON WAREHOUSE QUILLIAM_WH TO ROLE QUILLIAM_ADMIN_RL;
+GRANT OWNERSHIP ON WAREHOUSE QUILLIAM_WH TO ROLE QUILLIAM_ADMIN_RL COPY CURRENT GRANTS;
 
 -- ----------------------------------------------------
 -- Database & Schema
@@ -28,9 +30,22 @@ GRANT USAGE ON WAREHOUSE QUILLIAM_WH TO ROLE QUILLIAM_ADMIN_RL;
 CREATE DATABASE IF NOT EXISTS QUILLIAM;
 CREATE SCHEMA IF NOT EXISTS QUILLIAM.STG;
 
-GRANT ALL ON DATABASE QUILLIAM TO ROLE QUILLIAM_ADMIN_RL;
-GRANT ALL ON SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL;
+GRANT OWNERSHIP ON DATABASE QUILLIAM TO ROLE QUILLIAM_ADMIN_RL COPY CURRENT GRANTS;
+GRANT OWNERSHIP ON SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL COPY CURRENT GRANTS;
 
+-- ----------------------------------------------------
+-- Cortex AI privileges (must be granted by ACCOUNTADMIN)
+-- ----------------------------------------------------
+GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE QUILLIAM_ADMIN_RL;
+GRANT CREATE CORTEX SEARCH SERVICE ON SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL;
+GRANT CREATE AGENT ON SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL;
+GRANT CREATE EXTERNAL MCP SERVER ON SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL;
+
+-- ============================================================
+-- Switch to QUILLIAM_ADMIN_RL for all object creation
+-- (ensures ownership is correct from the start)
+-- ============================================================
+USE ROLE QUILLIAM_ADMIN_RL;
 USE SCHEMA QUILLIAM.STG;
 
 -- ----------------------------------------------------
@@ -39,110 +54,144 @@ USE SCHEMA QUILLIAM.STG;
 CREATE STAGE IF NOT EXISTS QUILLIAM.STG.AUDIO
     ENCRYPTION = (TYPE = 'SNOWFLAKE_SSE');
 
-GRANT ALL ON STAGE QUILLIAM.STG.AUDIO TO ROLE QUILLIAM_ADMIN_RL;
+-- ====================================================
+-- MEETINGS
+-- ====================================================
+CREATE TABLE IF NOT EXISTS QUILLIAM.STG.MEETINGS (
+    MEETING_ID VARCHAR(100) NOT NULL, PRIMARY KEY (MEETING_ID)
+);
+ALTER TABLE QUILLIAM.STG.MEETINGS RENAME TO QUILLIAM.STG._MEETINGS_BACKUP;
 
--- ----------------------------------------------------
--- MEETINGS — one row per recording session
--- ----------------------------------------------------
-CREATE OR REPLACE HYBRID TABLE QUILLIAM.STG.MEETINGS (
-    MEETING_ID          VARCHAR(50)     NOT NULL,
+CREATE TABLE QUILLIAM.STG.MEETINGS (
+    MEETING_ID          VARCHAR(100)    NOT NULL,
     TITLE               VARCHAR(500),
     STARTED_AT          TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
     ENDED_AT            TIMESTAMP_NTZ,
     STATUS              VARCHAR(20)     DEFAULT 'IN_PROGRESS',
     NOTES               VARCHAR(16777216),
     SUMMARY             VARCHAR(16777216),
-
-    PRIMARY KEY (MEETING_ID),
-    INDEX IDX_MEETINGS_STATUS(STATUS)
+    PRIMARY KEY (MEETING_ID)
 );
 
--- ----------------------------------------------------
--- MEETING_TRANSCRIPTS — one row per audio chunk
--- ----------------------------------------------------
-CREATE OR REPLACE TABLE QUILLIAM.STG.MEETING_TRANSCRIPTS (
+INSERT INTO QUILLIAM.STG.MEETINGS (MEETING_ID, TITLE, STARTED_AT, ENDED_AT, STATUS, NOTES, SUMMARY)
+SELECT
+    MEETING_ID,
+    TRY_CAST(TITLE AS VARCHAR),
+    STARTED_AT,
+    ENDED_AT,
+    STATUS,
+    TRY_CAST(NOTES AS VARCHAR),
+    TRY_CAST(SUMMARY AS VARCHAR)
+FROM QUILLIAM.STG._MEETINGS_BACKUP;
+
+DROP TABLE QUILLIAM.STG._MEETINGS_BACKUP;
+
+-- ====================================================
+-- MEETING_TRANSCRIPTS
+-- ====================================================
+CREATE TABLE IF NOT EXISTS QUILLIAM.STG.MEETING_TRANSCRIPTS (
+    ID NUMBER(38,0) NOT NULL, PRIMARY KEY (ID)
+);
+ALTER TABLE QUILLIAM.STG.MEETING_TRANSCRIPTS RENAME TO QUILLIAM.STG._TRANSCRIPTS_BACKUP;
+
+CREATE TABLE QUILLIAM.STG.MEETING_TRANSCRIPTS (
     ID                  NUMBER(38,0)    NOT NULL AUTOINCREMENT START 1 INCREMENT 1 NOORDER,
-    MEETING_ID          VARCHAR(50)     NOT NULL,
+    MEETING_ID          VARCHAR(100)    NOT NULL,
     CHUNK_NUMBER        NUMBER(10,0)    NOT NULL,
     TRANSCRIPT_TEXT     VARCHAR(16777216),
     AUDIO_DURATION      NUMBER(10,3),
     CREATED_AT          TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
-
     PRIMARY KEY (ID)
 );
 
--- Note: MEETING_TRANSCRIPTS is a regular table; secondary indexes
--- are only supported on Hybrid Tables. Filter by MEETING_ID using
--- standard query predicates instead.
+INSERT INTO QUILLIAM.STG.MEETING_TRANSCRIPTS (ID, MEETING_ID, CHUNK_NUMBER, TRANSCRIPT_TEXT, AUDIO_DURATION, CREATED_AT)
+SELECT ID, MEETING_ID, CHUNK_NUMBER, TRANSCRIPT_TEXT, AUDIO_DURATION, CREATED_AT
+FROM QUILLIAM.STG._TRANSCRIPTS_BACKUP;
 
--- ----------------------------------------------------
--- MEETING_EXTRACTIONS — raw ai_extract() JSON per chunk
--- ----------------------------------------------------
-CREATE OR REPLACE TABLE QUILLIAM.STG.MEETING_EXTRACTIONS (
+DROP TABLE QUILLIAM.STG._TRANSCRIPTS_BACKUP;
+
+-- ====================================================
+-- MEETING_EXTRACTIONS
+-- ====================================================
+CREATE TABLE IF NOT EXISTS QUILLIAM.STG.MEETING_EXTRACTIONS (
+    ID NUMBER(38,0) NOT NULL, PRIMARY KEY (ID)
+);
+ALTER TABLE QUILLIAM.STG.MEETING_EXTRACTIONS RENAME TO QUILLIAM.STG._EXTRACTIONS_BACKUP;
+
+CREATE TABLE QUILLIAM.STG.MEETING_EXTRACTIONS (
     ID                  NUMBER(38,0)    NOT NULL AUTOINCREMENT START 1 INCREMENT 1 NOORDER,
-    MEETING_ID          VARCHAR(50)     NOT NULL,
+    MEETING_ID          VARCHAR(100)    NOT NULL,
     CHUNK_NUMBER        NUMBER(10,0)    NOT NULL,
     RAW_JSON            VARIANT,
     CREATED_AT          TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
-
     PRIMARY KEY (ID)
 );
 
--- Note: MEETING_EXTRACTIONS is a regular table; secondary indexes
--- are only supported on Hybrid Tables.
+INSERT INTO QUILLIAM.STG.MEETING_EXTRACTIONS (ID, MEETING_ID, CHUNK_NUMBER, RAW_JSON, CREATED_AT)
+SELECT ID, MEETING_ID, CHUNK_NUMBER, RAW_JSON, CREATED_AT
+FROM QUILLIAM.STG._EXTRACTIONS_BACKUP;
 
--- ----------------------------------------------------
--- ACTION_ITEMS — de-duplicated tasks extracted from meeting
--- ----------------------------------------------------
-CREATE OR REPLACE HYBRID TABLE QUILLIAM.STG.ACTION_ITEMS (
+DROP TABLE QUILLIAM.STG._EXTRACTIONS_BACKUP;
+
+-- ====================================================
+-- ACTION_ITEMS
+-- ====================================================
+CREATE TABLE IF NOT EXISTS QUILLIAM.STG.ACTION_ITEMS (
+    ID NUMBER(38,0) NOT NULL, PRIMARY KEY (ID)
+);
+ALTER TABLE QUILLIAM.STG.ACTION_ITEMS RENAME TO QUILLIAM.STG._ACTIONS_BACKUP;
+
+CREATE TABLE QUILLIAM.STG.ACTION_ITEMS (
     ID                  NUMBER(38,0)    NOT NULL AUTOINCREMENT START 1 INCREMENT 1 NOORDER,
-    MEETING_ID          VARCHAR(50)     NOT NULL,
+    MEETING_ID          VARCHAR(100)    NOT NULL,
     OWNER               VARCHAR(200),
     TASK                VARCHAR(2000)   NOT NULL,
     DUE_DATE            VARCHAR(200),
     STATUS              VARCHAR(30)     DEFAULT 'OPEN',
     CREATED_AT          TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
-
-    PRIMARY KEY (ID),
-    INDEX IDX_ACTIONS_MEETING(MEETING_ID),
-    INDEX IDX_ACTIONS_STATUS(STATUS)
-);
-
--- ----------------------------------------------------
--- DECISIONS — conclusions captured from meeting
--- ----------------------------------------------------
-CREATE OR REPLACE TABLE QUILLIAM.STG.DECISIONS (
-    ID                  NUMBER(38,0)    NOT NULL AUTOINCREMENT START 1 INCREMENT 1 NOORDER,
-    MEETING_ID          VARCHAR(50)     NOT NULL,
-    DECISION_TEXT       VARCHAR(4000)   NOT NULL,
-    CHUNK_NUMBER        NUMBER(10,0),
-    CREATED_AT          TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
-
     PRIMARY KEY (ID)
 );
 
--- Note: DECISIONS is a regular table; secondary indexes
--- are only supported on Hybrid Tables.
+INSERT INTO QUILLIAM.STG.ACTION_ITEMS (ID, MEETING_ID, OWNER, TASK, DUE_DATE, STATUS, CREATED_AT)
+SELECT ID, MEETING_ID, OWNER, TASK, DUE_DATE, STATUS, CREATED_AT
+FROM QUILLIAM.STG._ACTIONS_BACKUP;
+
+DROP TABLE QUILLIAM.STG._ACTIONS_BACKUP;
+
+-- ====================================================
+-- DECISIONS
+-- ====================================================
+CREATE TABLE IF NOT EXISTS QUILLIAM.STG.DECISIONS (
+    ID NUMBER(38,0) NOT NULL, PRIMARY KEY (ID)
+);
+ALTER TABLE QUILLIAM.STG.DECISIONS RENAME TO QUILLIAM.STG._DECISIONS_BACKUP;
+
+CREATE TABLE QUILLIAM.STG.DECISIONS (
+    ID                  NUMBER(38,0)    NOT NULL AUTOINCREMENT START 1 INCREMENT 1 NOORDER,
+    MEETING_ID          VARCHAR(100)    NOT NULL,
+    DECISION_TEXT       VARCHAR(4000)   NOT NULL,
+    CHUNK_NUMBER        NUMBER(10,0),
+    CREATED_AT          TIMESTAMP_NTZ   DEFAULT CURRENT_TIMESTAMP(),
+    PRIMARY KEY (ID)
+);
+
+INSERT INTO QUILLIAM.STG.DECISIONS (ID, MEETING_ID, DECISION_TEXT, CHUNK_NUMBER, CREATED_AT)
+SELECT ID, MEETING_ID, DECISION_TEXT, CHUNK_NUMBER, CREATED_AT
+FROM QUILLIAM.STG._DECISIONS_BACKUP;
+
+DROP TABLE QUILLIAM.STG._DECISIONS_BACKUP;
 
 -- ----------------------------------------------------
--- Grants on tables
+-- Comments
 -- ----------------------------------------------------
-GRANT ALL ON ALL TABLES IN SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL;
-GRANT ALL ON FUTURE TABLES IN SCHEMA QUILLIAM.STG TO ROLE QUILLIAM_ADMIN_RL;
-
--- ----------------------------------------------------
--- Cortex AI function access
--- ----------------------------------------------------
-GRANT DATABASE ROLE SNOWFLAKE.CORTEX_USER TO ROLE QUILLIAM_ADMIN_RL;
+COMMENT ON TABLE QUILLIAM.STG.MEETINGS IS 'One row per meeting recording session';
+COMMENT ON TABLE QUILLIAM.STG.MEETING_TRANSCRIPTS IS 'Chunked transcripts from ai_transcribe()';
+COMMENT ON TABLE QUILLIAM.STG.MEETING_EXTRACTIONS IS 'Raw ai_extract() JSON output per chunk';
+COMMENT ON TABLE QUILLIAM.STG.ACTION_ITEMS IS 'Action items extracted from meetings';
+COMMENT ON TABLE QUILLIAM.STG.DECISIONS IS 'Decisions captured from meetings';
 
 -- ----------------------------------------------------
 -- Key pair auth for QUILLIAM_ADMIN
 -- (run separately after generating rsa_key.p8)
 -- ALTER USER QUILLIAM_ADMIN SET RSA_PUBLIC_KEY='<paste public key>';
 -- ----------------------------------------------------
-
-COMMENT ON TABLE QUILLIAM.STG.MEETINGS IS 'One row per meeting recording session';
-COMMENT ON TABLE QUILLIAM.STG.MEETING_TRANSCRIPTS IS 'Chunked transcripts from ai_transcribe()';
-COMMENT ON TABLE QUILLIAM.STG.MEETING_EXTRACTIONS IS 'Raw ai_extract() JSON output per chunk';
-COMMENT ON TABLE QUILLIAM.STG.ACTION_ITEMS IS 'Action items extracted from meetings';
-COMMENT ON TABLE QUILLIAM.STG.DECISIONS IS 'Decisions captured from meetings';
