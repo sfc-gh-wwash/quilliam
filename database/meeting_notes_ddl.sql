@@ -71,8 +71,9 @@ CREATE OR REPLACE TABLE QUILLIAM.STG.MEETING_TRANSCRIPTS (
     PRIMARY KEY (ID)
 );
 
-CREATE INDEX IF NOT EXISTS IDX_TRANSCRIPTS_MEETING
-    ON QUILLIAM.STG.MEETING_TRANSCRIPTS(MEETING_ID);
+-- Note: MEETING_TRANSCRIPTS is a regular table; secondary indexes
+-- are only supported on Hybrid Tables. Filter by MEETING_ID using
+-- standard query predicates instead.
 
 -- ----------------------------------------------------
 -- MEETING_EXTRACTIONS — raw ai_extract() JSON per chunk
@@ -87,8 +88,8 @@ CREATE OR REPLACE TABLE QUILLIAM.STG.MEETING_EXTRACTIONS (
     PRIMARY KEY (ID)
 );
 
-CREATE INDEX IF NOT EXISTS IDX_EXTRACTIONS_MEETING
-    ON QUILLIAM.STG.MEETING_EXTRACTIONS(MEETING_ID);
+-- Note: MEETING_EXTRACTIONS is a regular table; secondary indexes
+-- are only supported on Hybrid Tables.
 
 -- ----------------------------------------------------
 -- ACTION_ITEMS — de-duplicated tasks extracted from meeting
@@ -120,8 +121,8 @@ CREATE OR REPLACE TABLE QUILLIAM.STG.DECISIONS (
     PRIMARY KEY (ID)
 );
 
-CREATE INDEX IF NOT EXISTS IDX_DECISIONS_MEETING
-    ON QUILLIAM.STG.DECISIONS(MEETING_ID);
+-- Note: DECISIONS is a regular table; secondary indexes
+-- are only supported on Hybrid Tables.
 
 -- ----------------------------------------------------
 -- Grants on tables

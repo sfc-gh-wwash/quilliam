@@ -14,7 +14,14 @@ TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 BACKEND_LOG="$LOG_DIR/backend_$TIMESTAMP.log"
 FRONTEND_LOG="$LOG_DIR/frontend_$TIMESTAMP.log"
 
-echo "Starting FNOL Application..."
+if ! command -v ffmpeg &>/dev/null; then
+    echo "ERROR: ffmpeg is required but not installed."
+    echo "  macOS:  brew install ffmpeg"
+    echo "  Ubuntu: sudo apt-get install ffmpeg"
+    exit 1
+fi
+
+echo "Starting Quilliam..."
 echo "$PROJECT_DIR"
 kill_process() {
     pkill -f "$1" 2>/dev/null || true
@@ -72,7 +79,7 @@ echo "$BACKEND_PID" > "$PROJECT_DIR/backend.pid"
 echo "$FRONTEND_PID" > "$PROJECT_DIR/frontend.pid"
 
 echo ""
-echo "FNOL Application started!"
+echo "Quilliam started!"
 echo "  Frontend: http://localhost:3000"
 echo "  Backend API: http://localhost:8080"
 echo "  API Docs: http://localhost:8080/docs"

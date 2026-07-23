@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # FNOL Application Stop Script
-echo "🛑 Stopping FNOL Application..."
+echo "🛑 Stopping Quilliam..."
 
 # Function to kill processes by name
 kill_process() {
@@ -52,5 +52,5 @@ kill_port 8080  # Backend port
 kill_port 3000  # Frontend port
 
 echo ""
-echo "✅ FNOL Application stopped successfully!"
+echo "✅ Quilliam stopped successfully!"
 echo "💡 To restart the application, run: ./restart.sh"

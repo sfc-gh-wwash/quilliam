@@ -1,3 +1,6 @@
+# System dependency: ffmpeg must be installed for pydub MP3 encoding
+#   macOS: brew install ffmpeg
+#   Ubuntu/Debian: sudo apt-get install ffmpeg
 snowflake-connector-python==4.0.0
 pyaudio>=0.2.14
 pydub==0.25.1
