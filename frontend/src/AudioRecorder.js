@@ -93,6 +93,26 @@ const AudioRecorder = ({ websocket, onMeetingEnded }) => {
         setMeetingId(data.meeting_id);
         setIsRecording(true);
         setRecorderCollapsed(true);
+
+        // Poll for auto-detected title from calendar (agent runs async on backend)
+        const pollTitle = (id, attempts = 0) => {
+          if (attempts >= 10) return;
+          setTimeout(async () => {
+            try {
+              const res = await fetch('http://localhost:8080/api/meetings');
+              if (res.ok) {
+                const d = await res.json();
+                const m = (d.meetings || []).find(x => x.meeting_id === id);
+                if (m && m.title) {
+                  setMeetingTitle(m.title);
+                } else {
+                  pollTitle(id, attempts + 1);
+                }
+              }
+            } catch (e) { /* ignore */ }
+          }, 3000);
+        };
+        pollTitle(data.meeting_id);
       } else {
         throw new Error(data.detail || 'Failed to start recording');
       }

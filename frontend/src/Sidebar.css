@@ -120,6 +120,67 @@
   50%       { opacity: 0.7; transform: scale(1.15); }
 }
 
+/* Delete button on meeting items */
+.meeting-delete-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  font-size: 1rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.meeting-item:hover .meeting-delete-btn { opacity: 1; }
+.meeting-delete-btn:hover { color: #ef4444; }
+
+/* Deleted meetings folder */
+.deleted-folder {
+  border-top: 1px solid #e2e8f0;
+  padding: 8px 0;
+  margin-top: auto;
+}
+
+.deleted-folder-toggle {
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 8px 16px;
+  text-align: left;
+  font-size: 0.78rem;
+  color: #64748b;
+  cursor: pointer;
+  font-weight: 500;
+}
+
+.deleted-folder-toggle:hover { color: #334155; }
+
+.deleted-folder-icon {
+  font-size: 0.65rem;
+  margin-right: 6px;
+}
+
+.deleted-list .meeting-item {
+  opacity: 0.6;
+}
+
+.meeting-item.deleted .meeting-item-title {
+  text-decoration: line-through;
+}
+
+.meeting-restore-btn {
+  background: none;
+  border: none;
+  color: #29b5e8;
+  font-size: 0.85rem;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.meeting-restore-btn:hover { color: #0ea5e9; }
+
 @media (max-width: 768px) {
   .sidebar { width: 100%; min-width: 100%; height: auto; max-height: 200px; border-right: none; border-bottom: 1px solid #e2e8f0; }
 }

@@ -165,7 +165,40 @@ const MeetingDetail = ({ meetingId }) => {
           </h1>
         )}
         <div className="detail-meta">
-          <span>{meetingMeta.started_at}</span>
+          <label className="meta-field">
+            <span className="meta-label">Started:</span>
+            <input
+              type="datetime-local"
+              className="meta-datetime"
+              value={meetingMeta.started_at ? meetingMeta.started_at.slice(0, 16) : ''}
+              onChange={async (e) => {
+                const val = e.target.value;
+                setMeetingMeta(prev => ({ ...prev, started_at: val }));
+                await fetch(`${API}/meetings/${meetingId}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ started_at: val })
+                });
+              }}
+            />
+          </label>
+          <label className="meta-field">
+            <span className="meta-label">Ended:</span>
+            <input
+              type="datetime-local"
+              className="meta-datetime"
+              value={meetingMeta.ended_at ? meetingMeta.ended_at.slice(0, 16) : ''}
+              onChange={async (e) => {
+                const val = e.target.value;
+                setMeetingMeta(prev => ({ ...prev, ended_at: val }));
+                await fetch(`${API}/meetings/${meetingId}`, {
+                  method: 'PUT',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ ended_at: val })
+                });
+              }}
+            />
+          </label>
           <span className={`meeting-status-badge ${meetingMeta.status?.toLowerCase()}`}>
             {meetingMeta.status}
           </span>

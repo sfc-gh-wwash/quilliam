@@ -77,11 +77,13 @@ class SnowflakeManager:
     async def execute_query(self, query: str, params: Optional[Dict[str, Any]] = None) -> list:
         try:
             loop = asyncio.get_event_loop()
+            cur = self.connection.cursor()
             if params:
-                await loop.run_in_executor(None, self.cursor.execute, query, params)
+                await loop.run_in_executor(None, cur.execute, query, params)
             else:
-                await loop.run_in_executor(None, self.cursor.execute, query)
-            results = await loop.run_in_executor(None, self.cursor.fetchall)
+                await loop.run_in_executor(None, cur.execute, query)
+            results = await loop.run_in_executor(None, cur.fetchall)
+            cur.close()
             return results
         except Exception as e:
             print(f"Query execution failed: {str(e)}")
@@ -503,8 +505,13 @@ class SnowflakeManager:
             print(f"Summary generation failed for {meeting_id}: {str(e)}")
 
     async def create_meeting(self, meeting_id: str) -> bool:
-        """Insert a new meeting row when recording starts."""
+        """Insert a new meeting row when recording starts. Closes any existing in-progress meetings."""
         try:
+            await self.execute_query("""
+                UPDATE QUILLIAM.STG.MEETINGS
+                SET STATUS = 'COMPLETED', ENDED_AT = CURRENT_TIMESTAMP()
+                WHERE STATUS = 'IN_PROGRESS'
+            """)
             await self.execute_query(f"""
                 INSERT INTO QUILLIAM.STG.MEETINGS (MEETING_ID, STATUS, STARTED_AT)
                 VALUES ('{meeting_id}', 'IN_PROGRESS', CURRENT_TIMESTAMP())
@@ -514,16 +521,49 @@ class SnowflakeManager:
             print(f"create_meeting failed for {meeting_id}: {str(e)}")
             return False
 
+    async def detect_meeting_title(self, meeting_id: str) -> str:
+        """Ask the agent to find the current meeting from calendar and return its title."""
+        try:
+            from datetime import datetime
+            now = datetime.now().strftime('%Y-%m-%d %H:%M')
+
+            response = await self.run_agent(
+                f"The current date and time is {now}. "
+                f"Look at my Google Calendar and find the meeting that is happening right now "
+                f"or started within the last 5 minutes. "
+                f"Return ONLY the meeting title/subject line — nothing else, no explanation, no quotes, just the title text.",
+                meeting_id=None
+            )
+            title = response.strip().strip('"').strip("'")
+            # Extract title from markdown bold if present (e.g. "**Meeting Title**")
+            import re
+            bold_match = re.search(r'\*\*(.+?)\*\*', title)
+            if bold_match:
+                title = bold_match.group(1)
+            # If multi-line, take the line that looks most like a title
+            lines = [l.strip() for l in title.split('\n') if l.strip() and not l.strip().startswith(('-', '*', '•', 'The ', 'Your ', 'Time'))]
+            if lines:
+                title = lines[0].strip('*').strip()
+            # Sanity check — if response looks like an error or long explanation, skip
+            if title and len(title) < 200 and 'error' not in title.lower():
+                await self.update_meeting(meeting_id, title=title)
+                return title
+        except Exception as e:
+            print(f"detect_meeting_title failed: {str(e)}")
+        return ''
+
     # ------------------------------------------------------------------
     # Meeting list & update
     # ------------------------------------------------------------------
 
-    async def list_meetings(self) -> List[Dict[str, Any]]:
+    async def list_meetings(self, include_deleted: bool = False) -> List[Dict[str, Any]]:
         """Return all meetings ordered by most recent."""
         try:
-            results = await self.execute_query("""
+            where = "" if include_deleted else "WHERE STATUS != 'DELETED'"
+            results = await self.execute_query(f"""
                 SELECT MEETING_ID, TITLE, STARTED_AT, ENDED_AT, STATUS, NOTES, SUMMARY
                 FROM QUILLIAM.STG.MEETINGS
+                {where}
                 ORDER BY STARTED_AT DESC
             """)
             return [
@@ -542,8 +582,9 @@ class SnowflakeManager:
             print(f"list_meetings failed: {str(e)}")
             return []
 
-    async def update_meeting(self, meeting_id: str, title: str = None, notes: str = None) -> bool:
-        """Update meeting title and/or notes."""
+    async def update_meeting(self, meeting_id: str, title: str = None, notes: str = None,
+                             started_at: str = None, ended_at: str = None) -> bool:
+        """Update meeting fields."""
         try:
             sets = []
             if title is not None:
@@ -552,6 +593,12 @@ class SnowflakeManager:
             if notes is not None:
                 safe_notes = notes.replace("'", "''")
                 sets.append(f"NOTES = '{safe_notes}'")
+            if started_at is not None:
+                safe_ts = started_at.replace("'", "''")
+                sets.append(f"STARTED_AT = '{safe_ts}'::TIMESTAMP_NTZ")
+            if ended_at is not None:
+                safe_ts = ended_at.replace("'", "''")
+                sets.append(f"ENDED_AT = '{safe_ts}'::TIMESTAMP_NTZ")
             if not sets:
                 return True
             await self.execute_query(f"""
@@ -562,6 +609,34 @@ class SnowflakeManager:
             return True
         except Exception as e:
             print(f"update_meeting failed for {meeting_id}: {str(e)}")
+            return False
+
+    async def delete_meeting(self, meeting_id: str) -> bool:
+        """Soft-delete a meeting by setting status to DELETED."""
+        try:
+            safe_id = meeting_id.replace("'", "''")
+            await self.execute_query(f"""
+                UPDATE QUILLIAM.STG.MEETINGS
+                SET STATUS = 'DELETED'
+                WHERE MEETING_ID = '{safe_id}'
+            """)
+            return True
+        except Exception as e:
+            print(f"delete_meeting failed for {meeting_id}: {str(e)}")
+            return False
+
+    async def restore_meeting(self, meeting_id: str) -> bool:
+        """Restore a soft-deleted meeting."""
+        try:
+            safe_id = meeting_id.replace("'", "''")
+            await self.execute_query(f"""
+                UPDATE QUILLIAM.STG.MEETINGS
+                SET STATUS = 'COMPLETED'
+                WHERE MEETING_ID = '{safe_id}' AND STATUS = 'DELETED'
+            """)
+            return True
+        except Exception as e:
+            print(f"restore_meeting failed for {meeting_id}: {str(e)}")
             return False
 
     # ------------------------------------------------------------------
@@ -687,6 +762,8 @@ class SnowflakeManager:
                 ]
             }
 
+            print(f"[Agent Request] {user_text[:200]}")
+
             loop = asyncio.get_event_loop()
             response = await loop.run_in_executor(
                 None,
@@ -694,7 +771,7 @@ class SnowflakeManager:
             )
 
             if response.status_code != 200:
-                print(f"Agent API error {response.status_code}: {response.text[:500]}")
+                print(f"[Agent Error] {response.status_code}: {response.text[:500]}")
                 return f"Error: Agent returned status {response.status_code}"
 
             data = response.json()
@@ -705,7 +782,9 @@ class SnowflakeManager:
                 if item.get('type') == 'text':
                     text_parts.append(item.get('text', ''))
 
-            return '\n'.join(text_parts) if text_parts else "The agent did not return a text response."
+            result = '\n'.join(text_parts) if text_parts else "The agent did not return a text response."
+            print(f"[Agent Response] {result[:300]}")
+            return result
 
         except Exception as e:
             print(f"run_agent failed: {str(e)}")

@@ -58,6 +58,33 @@
   align-items: center;
   color: #94a3b8;
   font-size: 0.82rem;
+  flex-wrap: wrap;
+}
+
+.meta-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.meta-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #64748b;
+}
+
+.meta-datetime {
+  border: 1px solid #e2e8f0;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.75rem;
+  color: #334155;
+  background: #f8fafc;
+}
+
+.meta-datetime:focus {
+  border-color: #29b5e8;
+  outline: none;
 }
 
 .detail-meta .meeting-status-badge {

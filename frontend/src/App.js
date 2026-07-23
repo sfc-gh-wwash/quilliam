@@ -6,6 +6,13 @@ import MeetingDetail from './MeetingDetail';
 import AgentChat from './AgentChat';
 
 const RELEASE_NOTES = [
+  { version: '2.2', date: '2026-07-23', items: [
+    'Auto-detect meeting title from Google Calendar when recording starts',
+    'Soft-delete meetings with collapsible Deleted folder and restore',
+    'Editable start/end times on meeting detail',
+    'Agent request/response logging for debugging',
+    'Auto-close prior in-progress meetings on new recording',
+  ]},
   { version: '2.1', date: '2026-07-23', items: [
     'Gmail, Google Calendar, and Slack MCP connectors (Connect Services in agent chat)',
     'Cortex Search on meeting notes and summaries',

@@ -3,7 +3,9 @@ import './Sidebar.css';
 
 const Sidebar = ({ selectedMeetingId, onSelectMeeting, onNewMeeting, refreshKey }) => {
   const [meetings, setMeetings] = useState([]);
+  const [deletedMeetings, setDeletedMeetings] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showDeleted, setShowDeleted] = useState(false);
 
   useEffect(() => {
     loadMeetings();
@@ -12,15 +14,46 @@ const Sidebar = ({ selectedMeetingId, onSelectMeeting, onNewMeeting, refreshKey 
   const loadMeetings = async () => {
     setLoading(true);
     try {
-      const response = await fetch('http://localhost:8080/api/meetings');
-      if (response.ok) {
-        const data = await response.json();
+      const [res, delRes] = await Promise.all([
+        fetch('http://localhost:8080/api/meetings'),
+        fetch('http://localhost:8080/api/meetings/deleted'),
+      ]);
+      if (res.ok) {
+        const data = await res.json();
         setMeetings(data.meetings || []);
+      }
+      if (delRes.ok) {
+        const data = await delRes.json();
+        setDeletedMeetings(data.meetings || []);
       }
     } catch (error) {
       console.error('Failed to load meetings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const deleteMeeting = async (e, meetingId) => {
+    e.stopPropagation();
+    if (!window.confirm('Move this meeting to Deleted?')) return;
+    try {
+      const res = await fetch(`http://localhost:8080/api/meetings/${meetingId}`, { method: 'DELETE' });
+      if (res.ok) {
+        if (selectedMeetingId === meetingId) onSelectMeeting(null);
+        loadMeetings();
+      }
+    } catch (err) {
+      console.error('Failed to delete meeting:', err);
+    }
+  };
+
+  const restoreMeeting = async (e, meetingId) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`http://localhost:8080/api/meetings/${meetingId}/restore`, { method: 'POST' });
+      if (res.ok) loadMeetings();
+    } catch (err) {
+      console.error('Failed to restore meeting:', err);
     }
   };
 
@@ -58,6 +91,9 @@ const Sidebar = ({ selectedMeetingId, onSelectMeeting, onNewMeeting, refreshKey 
               <span className={`meeting-status-badge ${meeting.status?.toLowerCase()}`}>
                 {meeting.status === 'IN_PROGRESS' ? 'Live' : 'Done'}
               </span>
+              <button className="meeting-delete-btn" onClick={(e) => deleteMeeting(e, meeting.meeting_id)} title="Delete">
+                &times;
+              </button>
             </div>
           </div>
         ))}
@@ -65,6 +101,33 @@ const Sidebar = ({ selectedMeetingId, onSelectMeeting, onNewMeeting, refreshKey 
 
       {meetings.length === 0 && !loading && (
         <div className="sidebar-empty">No meetings yet</div>
+      )}
+
+      {/* Deleted meetings folder */}
+      {deletedMeetings.length > 0 && (
+        <div className="deleted-folder">
+          <button className="deleted-folder-toggle" onClick={() => setShowDeleted(!showDeleted)}>
+            <span className="deleted-folder-icon">{showDeleted ? '▼' : '▶'}</span>
+            Deleted ({deletedMeetings.length})
+          </button>
+          {showDeleted && (
+            <div className="deleted-list">
+              {deletedMeetings.map((meeting) => (
+                <div key={meeting.meeting_id} className="meeting-item deleted">
+                  <div className="meeting-item-title">
+                    {meeting.title || meeting.meeting_id}
+                  </div>
+                  <div className="meeting-item-meta">
+                    <span className="meeting-date">{formatDate(meeting.started_at)}</span>
+                    <button className="meeting-restore-btn" onClick={(e) => restoreMeeting(e, meeting.meeting_id)} title="Restore">
+                      ↩
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
     </aside>
   );

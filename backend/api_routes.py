@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import Optional, List
+import asyncio
 
 from audio_recorder import AudioRecorder
 from snowflake_manager import SnowflakeManager
@@ -32,6 +33,8 @@ class StartMeetingRequest(BaseModel):
 class UpdateMeetingRequest(BaseModel):
     title: Optional[str] = None
     notes: Optional[str] = None
+    started_at: Optional[str] = None
+    ended_at: Optional[str] = None
 
 
 class ActionItemRequest(BaseModel):
@@ -85,6 +88,9 @@ async def start_meeting(request: StartMeetingRequest):
 
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
+
+        # Auto-detect meeting title from calendar (fire-and-forget)
+        asyncio.ensure_future(snowflake_manager.detect_meeting_title(meeting_id))
 
         return {
             "success": True,
@@ -169,7 +175,10 @@ async def update_meeting(meeting_id: str, request: UpdateMeetingRequest):
     if not snowflake_manager:
         raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
     try:
-        success = await snowflake_manager.update_meeting(meeting_id, title=request.title, notes=request.notes)
+        success = await snowflake_manager.update_meeting(
+            meeting_id, title=request.title, notes=request.notes,
+            started_at=request.started_at, ended_at=request.ended_at
+        )
         if not success:
             raise HTTPException(status_code=400, detail="Failed to update meeting")
         return {"success": True}
@@ -177,6 +186,48 @@ async def update_meeting(meeting_id: str, request: UpdateMeetingRequest):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to update meeting: {str(e)}")
+
+
+@router.delete("/meetings/{meeting_id}")
+async def delete_meeting(meeting_id: str):
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        success = await snowflake_manager.delete_meeting(meeting_id)
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to delete meeting")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete meeting: {str(e)}")
+
+
+@router.get("/meetings/deleted")
+async def list_deleted_meetings():
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        all_meetings = await snowflake_manager.list_meetings(include_deleted=True)
+        deleted = [m for m in all_meetings if m['status'] == 'DELETED']
+        return {"meetings": deleted, "count": len(deleted)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to list deleted meetings: {str(e)}")
+
+
+@router.post("/meetings/{meeting_id}/restore")
+async def restore_meeting(meeting_id: str):
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        success = await snowflake_manager.restore_meeting(meeting_id)
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to restore meeting")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to restore meeting: {str(e)}")
 
 
 # ------------------------------------------------------------------
