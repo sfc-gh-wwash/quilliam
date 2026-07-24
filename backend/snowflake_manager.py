@@ -408,7 +408,7 @@ class SnowflakeManager:
             return []
 
     async def close_meeting(self, meeting_id: str) -> bool:
-        """Mark a meeting as completed, run full extraction, speaker transcription, and generate summary."""
+        """Mark a meeting as completed, run full extraction, and generate summary."""
         try:
             await self._transcribe_archive_with_speakers(meeting_id)
             await self.extract_meeting_notes(meeting_id)
@@ -428,12 +428,12 @@ class SnowflakeManager:
         """Run speaker-level transcription on the archive file (chunk 0) using timestamp_granularity=speaker."""
         try:
             # Archive filename pattern: {meeting_id}_0_{date}_.mp3
-            # Segments are: {meeting_id}_{chunk:03d}_{date}_.mp3 (3-digit chunk numbers)
-            # Use RLIKE to match _0_ followed by a year (not _001_, _002_, etc.)
+            # Use LIKE with wildcards (more reliable than RLIKE with colons in filenames)
             files = await self.execute_query(f"""
                 SELECT DISTINCT METADATA$FILENAME
                 FROM @QUILLIAM.STG.AUDIO
-                WHERE METADATA$FILENAME RLIKE '{meeting_id}_0_[0-9]{{4}}.*'
+                WHERE METADATA$FILENAME LIKE '%{meeting_id}_0_%'
+                  AND METADATA$FILENAME NOT LIKE '%{meeting_id}_00%'
                 LIMIT 1
             """)
 

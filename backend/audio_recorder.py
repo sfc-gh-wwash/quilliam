@@ -139,8 +139,9 @@ class AudioRecorder:
         print("Stopping recording...")
         self.is_recording = False
 
+        # Wait for all recording threads to finish (archive may need time to encode)
         for thread in self.recording_threads:
-            thread.join(timeout=5)
+            thread.join(timeout=60)
         self.recording_threads.clear()
 
         # Upload archive before close_meeting runs
@@ -284,27 +285,42 @@ class AudioRecorder:
             print(f"Error uploading {upload_type} to Snowflake: {str(e)}")
 
     async def _upload_archive(self):
-        """Upload complete meeting archive to Snowflake (transcription happens at meeting close)."""
+        """Upload archive MP3 to Snowflake. If file is empty/missing, build transcript from segments."""
         try:
-            if not self.archive_filename or not os.path.exists(self.archive_filename):
-                print("No archive file to upload")
-                return
+            meeting_id = self.current_meeting_id
+            uploaded = False
 
-            staged_path = await self.snowflake_manager.upload_mp3_to_stage(self.archive_filename)
-            print(f"Uploaded archive to Snowflake: {staged_path}")
-
-            if os.path.exists(self.archive_filename):
+            # Try uploading the archive file if it exists and has content
+            if self.archive_filename and os.path.exists(self.archive_filename):
+                file_size = os.path.getsize(self.archive_filename)
+                if file_size > 0:
+                    staged_path = await self.snowflake_manager.upload_mp3_to_stage(self.archive_filename)
+                    print(f"Uploaded archive to Snowflake: {staged_path} ({file_size} bytes)")
+                    uploaded = True
+                else:
+                    print(f"Archive file is 0 bytes, will build from segments")
                 os.remove(self.archive_filename)
 
-            if self.update_callback:
-                await self.update_callback({
-                    "type": "archive_uploaded",
-                    "file": staged_path,
-                    "timestamp": datetime.now().isoformat()
-                })
+            # If archive upload failed or was empty, build chunk 0 from segment transcripts
+            if not uploaded and meeting_id:
+                concat_sql = f"""
+                    INSERT INTO QUILLIAM.STG.MEETING_TRANSCRIPTS
+                        (MEETING_ID, CHUNK_NUMBER, TRANSCRIPT_TEXT, AUDIO_DURATION, CREATED_AT)
+                    SELECT 
+                        '{meeting_id}', 0,
+                        LISTAGG(TRANSCRIPT_TEXT, ' ') WITHIN GROUP (ORDER BY CHUNK_NUMBER),
+                        SUM(AUDIO_DURATION),
+                        CURRENT_TIMESTAMP()
+                    FROM QUILLIAM.STG.MEETING_TRANSCRIPTS
+                    WHERE MEETING_ID = '{meeting_id}' AND CHUNK_NUMBER > 0
+                      AND TRANSCRIPT_TEXT IS NOT NULL
+                    HAVING COUNT(*) > 0
+                """
+                await self.snowflake_manager.execute_query(concat_sql)
+                print(f"Built full transcript (chunk 0) from segments for {meeting_id}")
 
         except Exception as e:
-            print(f"Error uploading archive: {str(e)}")
+            print(f"Error in archive upload: {str(e)}")
 
     def set_update_callback(self, callback: Callable):
         """Set callback for real-time updates."""
