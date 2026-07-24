@@ -16,6 +16,7 @@ class AudioRecorder:
         self.pyaudio_instance = None
         self.is_recording = False
         self.recording_threads = []
+        self._upload_semaphore = threading.Semaphore(3)  # max 3 concurrent uploads
 
         # Audio configuration (optimized to prevent overflow)
         self.sample_rate = 44100
@@ -235,16 +236,24 @@ class AudioRecorder:
             print(f"Error saving MP3 file: {str(e)}")
 
     def _schedule_upload(self, filename: str, upload_type: str):
-        """Schedule upload to Snowflake from thread context."""
-        try:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
+        """Schedule upload to Snowflake without blocking the recording thread."""
+        import threading
+
+        def _do_upload():
+            self._upload_semaphore.acquire()
             try:
-                loop.run_until_complete(self._upload_file_to_snowflake(filename, upload_type))
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                try:
+                    loop.run_until_complete(self._upload_file_to_snowflake(filename, upload_type))
+                finally:
+                    loop.close()
+            except Exception as e:
+                print(f"Error in upload thread for {upload_type}: {str(e)}")
             finally:
-                loop.close()
-        except Exception as e:
-            print(f"Error scheduling upload for {upload_type}: {str(e)}")
+                self._upload_semaphore.release()
+
+        threading.Thread(target=_do_upload, daemon=True).start()
 
     async def _upload_file_to_snowflake(self, filename: str, upload_type: str):
         """Upload file to Snowflake stage, transcribe, extract, and push WebSocket update."""
@@ -260,15 +269,11 @@ class AudioRecorder:
                     transcript_chunks = await self.snowflake_manager.get_meeting_transcript(
                         self.current_meeting_id
                     )
-                    questions = await self.snowflake_manager.detect_questions(
-                        self.current_meeting_id
-                    )
 
                     await self.update_callback({
                         "type": "meeting_updated",
                         "meeting_id": self.current_meeting_id,
                         "transcript_chunks": [c['text'] for c in transcript_chunks if c['text']],
-                        "questions": questions,
                         "timestamp": datetime.now().isoformat()
                     })
 
