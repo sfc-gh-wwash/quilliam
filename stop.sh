@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# FNOL Application Stop Script
+# Quilliam Application Stop Script
 echo "🛑 Stopping Quilliam..."
 
 # Function to kill processes by name
