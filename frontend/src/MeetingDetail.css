@@ -122,6 +122,30 @@
 /* Summary */
 .summary-section { border-top-color: #8b5cf6; }
 
+.section-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.section-header-row h2 { margin: 0; }
+
+.btn-secondary {
+  background: #f1f5f9;
+  color: #475569;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 5px 12px;
+  transition: background 0.15s;
+}
+.btn-secondary:hover:not(:disabled) { background: #e2e8f0; }
+.btn-secondary:disabled { opacity: 0.55; cursor: default; }
+.btn-small { padding: 4px 10px; font-size: 0.78rem; }
+
+.no-content { color: #94a3b8; font-size: 0.88rem; font-style: italic; margin: 0; }
+
 .summary-content {
   color: #1e293b;
   font-size: 0.92rem;

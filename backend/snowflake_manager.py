@@ -427,13 +427,21 @@ class SnowflakeManager:
     async def _transcribe_archive_with_speakers(self, meeting_id: str) -> None:
         """Run speaker-level transcription on the archive file (chunk 0) using timestamp_granularity=speaker."""
         try:
+            # Skip if a valid chunk 0 transcript already exists (e.g. from LISTAGG fallback)
+            existing = await self.execute_query(f"""
+                SELECT MAX(AUDIO_DURATION) FROM QUILLIAM.STG.MEETING_TRANSCRIPTS
+                WHERE MEETING_ID = '{meeting_id}' AND CHUNK_NUMBER = 0
+            """)
+            if existing and existing[0][0] and float(existing[0][0]) > 60:
+                print(f"Valid chunk 0 already exists ({existing[0][0]:.0f}s), skipping archive transcription")
+                return
+
             # Archive filename pattern: {meeting_id}_0_{date}_.mp3
-            # Use LIKE with wildcards (more reliable than RLIKE with colons in filenames)
+            # Use REGEXP_LIKE so _ is literal (LIKE treats _ as single-char wildcard which breaks segment matching)
             files = await self.execute_query(f"""
                 SELECT DISTINCT METADATA$FILENAME
                 FROM @QUILLIAM.STG.AUDIO
-                WHERE METADATA$FILENAME LIKE '%{meeting_id}_0_%'
-                  AND METADATA$FILENAME NOT LIKE '%{meeting_id}_00%'
+                WHERE REGEXP_LIKE(METADATA$FILENAME, '.*{meeting_id}_0_[0-9].*')
                 LIMIT 1
             """)
 
@@ -468,19 +476,34 @@ class SnowflakeManager:
             print(f"Archive speaker transcription failed for {meeting_id}: {str(e)}")
 
     async def _generate_summary(self, meeting_id: str) -> None:
-        """Use ai_complete() to generate a narrative meeting summary from the archive transcript (chunk 0)."""
+        """Use CORTEX.COMPLETE to generate a meeting summary. Falls back to LISTAGG of segments if archive is absent."""
         try:
             summary_sql = f"""
             UPDATE QUILLIAM.STG.MEETINGS
             SET SUMMARY = (
-                WITH transcript AS (
+                WITH
+                archive_t AS (
                     SELECT TRANSCRIPT_TEXT AS full_text
                     FROM QUILLIAM.STG.MEETING_TRANSCRIPTS
                     WHERE MEETING_ID = '{meeting_id}'
                       AND CHUNK_NUMBER = 0
                       AND AUDIO_DURATION > 15
-                    ORDER BY CREATED_AT DESC
+                    ORDER BY AUDIO_DURATION DESC
                     LIMIT 1
+                ),
+                segment_t AS (
+                    SELECT LEFT(
+                        LISTAGG(TRANSCRIPT_TEXT, ' ') WITHIN GROUP (ORDER BY CHUNK_NUMBER),
+                        80000
+                    ) AS full_text
+                    FROM QUILLIAM.STG.MEETING_TRANSCRIPTS
+                    WHERE MEETING_ID = '{meeting_id}'
+                      AND CHUNK_NUMBER > 0
+                ),
+                best_t AS (
+                    SELECT COALESCE(a.full_text, s.full_text) AS full_text
+                    FROM segment_t s
+                    LEFT JOIN archive_t a ON TRUE
                 )
                 SELECT SNOWFLAKE.CORTEX.COMPLETE(
                     'llama3.1-70b',
@@ -494,15 +517,32 @@ class SnowflakeManager:
                         full_text
                     )
                 )
-                FROM transcript
+                FROM best_t
                 WHERE full_text IS NOT NULL AND LENGTH(full_text) > 20
             )
             WHERE MEETING_ID = '{meeting_id}'
             """
             await self.execute_query(summary_sql)
-            print(f"Summary generated for meeting {meeting_id}")
+            # Verify something was actually written
+            check = await self.execute_query(f"""
+                SELECT LENGTH(SUMMARY) FROM QUILLIAM.STG.MEETINGS WHERE MEETING_ID = '{meeting_id}'
+            """)
+            summary_len = check[0][0] if check and check[0][0] else 0
+            if summary_len > 0:
+                print(f"Summary generated for meeting {meeting_id} ({summary_len} chars)")
+            else:
+                print(f"Summary generation returned empty for meeting {meeting_id} - no transcript found")
         except Exception as e:
             print(f"Summary generation failed for {meeting_id}: {str(e)}")
+
+    async def regenerate_summary(self, meeting_id: str) -> bool:
+        """Public method to re-run summary generation for an existing meeting."""
+        try:
+            await self._generate_summary(meeting_id)
+            return True
+        except Exception as e:
+            print(f"regenerate_summary failed for {meeting_id}: {str(e)}")
+            return False
 
     async def create_meeting(self, meeting_id: str) -> bool:
         """Insert a new meeting row when recording starts. Closes any existing in-progress meetings."""

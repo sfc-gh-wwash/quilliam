@@ -21,6 +21,7 @@ const MeetingDetail = ({ meetingId }) => {
   const [newDecision, setNewDecision] = useState('');
   const [editingItemId, setEditingItemId] = useState(null);
   const [editingDecisionId, setEditingDecisionId] = useState(null);
+  const [regeneratingSummary, setRegeneratingSummary] = useState(false);
 
   const loadMeeting = useCallback(async () => {
     setLoading(true);
@@ -206,16 +207,35 @@ const MeetingDetail = ({ meetingId }) => {
       </div>
 
       {/* Summary */}
-      {summary && (
-        <section className="detail-section summary-section">
+      <section className="detail-section summary-section">
+        <div className="section-header-row">
           <h2>Meeting Summary</h2>
+          <button
+            className="btn-secondary btn-small"
+            disabled={regeneratingSummary}
+            onClick={async () => {
+              setRegeneratingSummary(true);
+              try {
+                await fetch(`${API}/meetings/${meetingId}/summary/regenerate`, { method: 'POST' });
+                await loadMeeting();
+              } finally {
+                setRegeneratingSummary(false);
+              }
+            }}
+          >
+            {regeneratingSummary ? 'Generating...' : summary ? 'Regenerate' : 'Generate Summary'}
+          </button>
+        </div>
+        {summary ? (
           <div className="summary-content">
             {summary.split('\n').map((line, i) => (
               <p key={i}>{line}</p>
             ))}
           </div>
-        </section>
-      )}
+        ) : (
+          <p className="no-content">No summary yet. Click "Generate Summary" to create one.</p>
+        )}
+      </section>
 
       {/* Transcript */}
       {transcriptChunks.length > 0 && (

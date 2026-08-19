@@ -1,7 +1,9 @@
 import asyncio
 import os
+import subprocess
 import threading
 import time
+import wave
 from typing import Optional, List, Callable
 import pyaudio
 from pydub import AudioSegment
@@ -35,6 +37,7 @@ class AudioRecorder:
         # Recording state
         self.current_meeting_id: Optional[str] = None
         self.archive_filename: Optional[str] = None
+        self.archive_thread: Optional[threading.Thread] = None
         self.chunk_counter = 0
         self.chunk_lock = threading.Lock()
 
@@ -116,13 +119,12 @@ class AudioRecorder:
             secondary_thread.start()
             self.recording_threads.append(secondary_thread)
 
-            # 3. Archive stream (continuous)
-            archive_thread = threading.Thread(
+            # 3. Archive stream (continuous) — tracked separately for longer join timeout
+            self.archive_thread = threading.Thread(
                 target=self._record_archive,
                 args=(device_index,)
             )
-            archive_thread.start()
-            self.recording_threads.append(archive_thread)
+            self.archive_thread.start()
 
             return {"success": True, "message": "Recording started"}
 
@@ -139,10 +141,16 @@ class AudioRecorder:
         print("Stopping recording...")
         self.is_recording = False
 
-        # Wait for all recording threads to finish (archive may need time to encode)
+        # Wait for segment recording threads (short timeout)
         for thread in self.recording_threads:
             thread.join(timeout=60)
         self.recording_threads.clear()
+
+        # Wait for archive thread (longer timeout — ffmpeg encoding for large files)
+        if self.archive_thread and self.archive_thread.is_alive():
+            print("Waiting for archive encoding to complete...")
+            self.archive_thread.join(timeout=600)
+        self.archive_thread = None
 
         # Upload archive before close_meeting runs
         if self.archive_filename and os.path.exists(self.archive_filename):
@@ -192,8 +200,8 @@ class AudioRecorder:
             print(f"Error in {stream_name} recording stream: {str(e)}")
 
     def _record_archive(self, device_index: Optional[int]):
-        """Record complete meeting archive directly as MP3."""
-        frames = []
+        """Record complete meeting archive by streaming to WAV on disk, then converting to MP3."""
+        wav_path = self.archive_filename.replace('.mp3', '.wav')
         try:
             stream = self.pyaudio_instance.open(
                 format=self.format,
@@ -204,23 +212,62 @@ class AudioRecorder:
                 frames_per_buffer=self.chunk_size
             )
 
-            while self.is_recording:
-                try:
-                    data = stream.read(self.chunk_size, exception_on_overflow=False)
-                    frames.append(data)
-                except Exception as e:
-                    print(f"Archive audio read error (continuing): {e}")
-                    continue
+            # Stream audio directly to WAV file on disk (no in-memory accumulation)
+            with wave.open(wav_path, 'wb') as wf:
+                wf.setnchannels(self.channels)
+                wf.setsampwidth(self.pyaudio_instance.get_sample_size(self.format))
+                wf.setframerate(self.sample_rate)
+                while self.is_recording:
+                    try:
+                        data = stream.read(self.chunk_size, exception_on_overflow=False)
+                        wf.writeframes(data)
+                    except Exception as e:
+                        print(f"Archive audio read error (continuing): {e}")
+                        continue
 
             stream.stop_stream()
             stream.close()
 
-            if frames:
-                self._save_mp3_file(self.archive_filename, frames)
-                print(f"Archive saved: {self.archive_filename}")
+            # Convert WAV to MP3 using ffmpeg (much faster than pydub for large files)
+            if os.path.exists(wav_path) and os.path.getsize(wav_path) > 0:
+                self._convert_wav_to_mp3(wav_path, self.archive_filename)
+            else:
+                print("Archive WAV file is empty, skipping conversion")
 
         except Exception as e:
             print(f"Error in archive recording: {str(e)}")
+        finally:
+            if os.path.exists(wav_path):
+                os.remove(wav_path)
+
+    def _convert_wav_to_mp3(self, wav_path: str, mp3_path: str):
+        """Convert WAV to MP3 using ffmpeg subprocess."""
+        try:
+            result = subprocess.run(
+                ['ffmpeg', '-i', wav_path, '-b:a', '128k', '-y', mp3_path],
+                capture_output=True, timeout=600
+            )
+            if result.returncode == 0:
+                size_mb = os.path.getsize(mp3_path) / (1024 * 1024)
+                print(f"Archive encoded: {mp3_path} ({size_mb:.1f} MB)")
+            else:
+                print(f"ffmpeg conversion failed: {result.stderr.decode()[:200]}")
+        except subprocess.TimeoutExpired:
+            print("ffmpeg timed out encoding archive (>10 min)")
+        except FileNotFoundError:
+            print("ffmpeg not found — falling back to pydub for archive encoding")
+            self._save_mp3_file_from_wav(wav_path, mp3_path)
+        except Exception as e:
+            print(f"Archive MP3 conversion error: {e}")
+
+    def _save_mp3_file_from_wav(self, wav_path: str, mp3_path: str):
+        """Fallback: use pydub if ffmpeg binary not available."""
+        try:
+            audio = AudioSegment.from_wav(wav_path)
+            audio.export(mp3_path, format="mp3", bitrate="128k")
+            print(f"Archive encoded via pydub fallback: {mp3_path}")
+        except Exception as e:
+            print(f"pydub fallback encoding failed: {e}")
 
     def _save_mp3_file(self, filename: str, frames: List[bytes]):
         """Save audio frames directly as MP3 file."""

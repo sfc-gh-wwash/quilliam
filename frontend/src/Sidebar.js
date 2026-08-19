@@ -6,6 +6,10 @@ const Sidebar = ({ selectedMeetingId, onSelectMeeting, onNewMeeting, refreshKey 
   const [deletedMeetings, setDeletedMeetings] = useState([]);
   const [loading, setLoading] = useState(false);
   const [showDeleted, setShowDeleted] = useState(false);
+  const [showExport, setShowExport] = useState(false);
+  const [exportStart, setExportStart] = useState('');
+  const [exportEnd, setExportEnd] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
     loadMeetings();
@@ -63,14 +67,61 @@ const Sidebar = ({ selectedMeetingId, onSelectMeeting, onNewMeeting, refreshKey 
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
+  const handleExport = async () => {
+    if (!exportStart || !exportEnd) return;
+    setExporting(true);
+    try {
+      const res = await fetch(`http://localhost:8080/api/meetings/export?start_date=${exportStart}&end_date=${exportEnd}`);
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.detail || 'Export failed');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `meetings_${exportStart}_to_${exportEnd}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setShowExport(false);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
         <h2>Meetings</h2>
-        <button className="new-meeting-btn" onClick={onNewMeeting}>
-          + New
-        </button>
+        <div className="sidebar-header-actions">
+          <button className="export-btn" onClick={() => setShowExport(!showExport)} title="Export meetings">
+            Export
+          </button>
+          <button className="new-meeting-btn" onClick={onNewMeeting}>
+            + New
+          </button>
+        </div>
       </div>
+
+      {showExport && (
+        <div className="export-panel">
+          <div className="export-field">
+            <label>From</label>
+            <input type="date" value={exportStart} onChange={(e) => setExportStart(e.target.value)} />
+          </div>
+          <div className="export-field">
+            <label>To</label>
+            <input type="date" value={exportEnd} onChange={(e) => setExportEnd(e.target.value)} />
+          </div>
+          <button className="export-download-btn" onClick={handleExport} disabled={exporting || !exportStart || !exportEnd}>
+            {exporting ? 'Exporting...' : 'Download .md'}
+          </button>
+        </div>
+      )}
 
       {loading && meetings.length === 0 && (
         <div className="sidebar-loading">Loading...</div>

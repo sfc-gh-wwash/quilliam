@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import asyncio
@@ -228,6 +229,69 @@ async def restore_meeting(meeting_id: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to restore meeting: {str(e)}")
+
+
+@router.post("/meetings/{meeting_id}/summary/regenerate")
+async def regenerate_summary(meeting_id: str):
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        success = await snowflake_manager.regenerate_summary(meeting_id)
+        if not success:
+            raise HTTPException(status_code=400, detail="Failed to regenerate summary")
+        return {"success": True, "message": f"Summary regeneration triggered for {meeting_id}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to regenerate summary: {str(e)}")
+
+
+@router.get("/meetings/export")
+async def export_meetings(start_date: str, end_date: str):
+    """Export meetings in a date range as a Markdown document."""
+    if not snowflake_manager:
+        raise HTTPException(status_code=500, detail="Snowflake manager not initialized")
+    try:
+        all_meetings = await snowflake_manager.list_meetings()
+        # Filter to date range (start/end are ISO date strings like 2026-08-01)
+        filtered = []
+        for m in all_meetings:
+            started = m.get('started_at', '')
+            if not started:
+                continue
+            meeting_date = started[:10]  # YYYY-MM-DD
+            if start_date <= meeting_date <= end_date:
+                filtered.append(m)
+
+        if not filtered:
+            raise HTTPException(status_code=404, detail="No meetings found in that date range")
+
+        # Build Markdown
+        lines = [f"# Meeting Notes: {start_date} to {end_date}\n"]
+        for m in filtered:
+            title = m.get('title') or m.get('meeting_id', 'Untitled')
+            lines.append(f"## {title}\n")
+            lines.append(f"**Start:** {m.get('started_at', 'N/A')}  ")
+            lines.append(f"**End:** {m.get('ended_at', 'N/A')}\n")
+            if m.get('notes'):
+                lines.append("### Notes\n")
+                lines.append(m['notes'] + "\n")
+            if m.get('summary'):
+                lines.append("### Summary\n")
+                lines.append(m['summary'] + "\n")
+            lines.append("---\n")
+
+        content = "\n".join(lines)
+        filename = f"meetings_{start_date}_to_{end_date}.md"
+        return PlainTextResponse(
+            content=content,
+            media_type="text/markdown",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to export meetings: {str(e)}")
 
 
 # ------------------------------------------------------------------
